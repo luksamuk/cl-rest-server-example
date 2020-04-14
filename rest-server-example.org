@@ -1,0 +1,449 @@
+#+TITLE: Servidor REST em Common Lisp
+#+LANGUAGE:  pt_BR
+#+AUTHOR:    Lucas S. Vieira
+#+EMAIL:     lucasvieira@protonmail.com
+#+STARTUP:   inlineimages content latexpreview
+#+PROPERTY:  header-args:lisp :noweb strip-export :eval no :tangle no
+#+OPTIONS:   toc:nil title:nil
+
+* Sumário :TOC:
+- [[#introdução][Introdução]]
+- [[#dependências][Dependências]]
+- [[#definindo-o-projeto][Definindo o Projeto]]
+  - [[#definição-do-system][Definição do System]]
+  - [[#definição-do-pacote-de-utilitários][Definição do pacote de utilitários]]
+  - [[#definição-do-pacote-de-banco-de-dados][Definição do pacote de banco de dados]]
+  - [[#definição-do-pacote-principal][Definição do pacote principal]]
+- [[#rotas][Rotas]]
+  - [[#lista-de-usuários][Lista de usuários]]
+  - [[#registrar-usuário][Registrar usuário]]
+- [[#inicialização-do-servidor][Inicialização do servidor]]
+  - [[#handler-do-servidor][Handler do servidor]]
+  - [[#iniciando-o-servidor][Iniciando o servidor]]
+  - [[#encerrando-o-servidor][Encerrando o servidor]]
+- [[#utilitários][Utilitários]]
+  - [[#obtendo-elemento-de-uma-alist-ao-usar-macros][Obtendo elemento de uma alist ao usar macros]]
+- [[#banco-de-dados][Banco de dados]]
+  - [[#usando-postgresql-pelo-docker][Usando PostgreSQL pelo Docker]]
+  - [[#criando-um-banco-de-dados][Criando um banco de dados]]
+  - [[#conexão][Conexão]]
+  - [[#modelos][Modelos]]
+
+* Introdução
+
+A fazer. Mais detalhes posteriormente.
+
+* Dependências
+
+- [[https://github.com/joaotavora/snooze][Snooze]], para criação de aplicações REST;
+- [[https://quickref.common-lisp.net/clack.html][Clack]], servidor que trabalha sob o Snooze;
+- [[https://quickref.common-lisp.net/cl-json.html][cl-json]], para /parsing/ e serialização de informações em JSON;
+- [[https://github.com/fukamachi/mito][Mito]], para interação com o banco de dados.
+
+* Definindo o Projeto
+
+** Definição do System
+:PROPERTIES:
+:header-args:lisp: :tangle rest-server-example.asd
+:END:
+
+#+begin_src lisp
+(asdf:defsystem #:rest-server-example
+    :description "Exemplo de um servidor REST"
+    :author "Lucas S. Vieira <lucasvieira@protonmail.com>"
+    :license "MIT"
+    :version "0.0.1"
+    :serial t
+    :depends-on (#:uiop #:cl-json #:snooze #:clack #:mito)
+    :components
+    ((:file "package")
+     (:module "src"
+       :components ((:file "util")
+                    (:file "routes")
+                    (:file "server")
+                    (:file "db")
+                    (:module "models"
+                      :components ((:file "user")))))))
+#+end_src
+
+** Definição do pacote de utilitários
+:PROPERTIES:
+:header-args:lisp: :tangle package.lisp
+:END:
+
+#+begin_src lisp
+(defpackage #:rest-server.util
+  (:nicknames #:util)
+  (:use #:cl)
+  (:export #:agetf))
+#+end_src
+
+#+RESULTS:
+: #<PACKAGE "REST-SERVER.UTIL">
+
+** Definição do pacote de banco de dados
+:PROPERTIES:
+:header-args:lisp: :tangle package.lisp
+:END:
+
+#+begin_src lisp
+(defpackage #:rest-server.db
+  (:nicknames #:db)
+  (:use #:cl #:mito)
+  (:export #:db-connect
+           #:db-disconnect
+           #:into-json
+           #:into-alist
+           #:from-alist
+           #:user))
+#+end_src
+
+#+RESULTS:
+: #<PACKAGE "REST-SERVER.DB">
+
+** Definição do pacote principal
+:PROPERTIES:
+:header-args:lisp: :tangle package.lisp
+:END:
+
+#+begin_src lisp
+(defpackage #:rest-server
+  (:nicknames #:restmain)
+  (:use #:cl #:snooze)
+  (:export #:start-server
+           #:stop-server))
+#+end_src
+
+#+RESULTS:
+: #<PACKAGE "REST-SERVER">
+
+* Rotas
+:PROPERTIES:
+:header-args:lisp: :tangle src/routes.lisp
+:END:
+
+#+begin_src lisp
+(in-package #:rest-server)
+#+end_src
+
+** Lista de usuários
+
+- =GET /users=
+- =GET /users/id=
+
+#+begin_src lisp
+(defroute users (:get "application/json" &optional (id 'all))
+  (if (eq id 'all)
+      (json:encode-json-to-string
+       (mapcar #'db:into-alist (mito:select-dao 'db:user)))
+      (let ((the-user (mito:find-dao 'db:user :id id)))
+        (if (null the-user)
+            (http-condition 404 "Unknown user ID")
+            (db:into-json the-user)))))
+#+end_src
+
+#+RESULTS:
+: #<STANDARD-METHOD REST-SERVER::USERS (SNOOZE-VERBS:GET
+:                                       SNOOZE-TYPES:APPLICATION/JSON) {10023445C3}>
+
+** Registrar usuário
+
+#+begin_src lisp
+(defmacro validate-json (payload)
+  (let ((payload-sym (gensym)))
+    `(let ((,payload-sym ,payload))
+       (handler-case (json:decode-json-from-string
+                      ,payload-sym)
+         (error (e)
+           (declare (ignore e))
+           (http-condition 400 "Malformed JSON: ~a" ,payload-sym))))))
+#+end_src
+
+#+RESULTS:
+: VALIDATE-JSON
+
+#+begin_src lisp
+(defun valid-user-p (user-data)
+  (let ((fields '(:name :address :mail :pass)))
+    (loop for field in user-data
+       always (and (consp field)
+                   (stringp (cdr field))
+                   (and (member (car field) fields))))))
+#+end_src
+
+#+RESULTS:
+: VALID-USER-P
+
+- =POST /users=  onde o  payload precisa  ser um  JSON válido  com NAME,
+  ADDRESS, MAIL, PASS.
+
+#+begin_src lisp
+(defroute users (:post "application/json" &optional id)
+  (declare (ignore id))
+  (let ((object (validate-json (payload-as-string))))
+    (if (not (valid-user-p object))
+        (http-condition 400 "Malformed user data")
+        (handler-case (let ((user (db:from-alist :user object)))
+                        (mito:insert-dao user)
+                        (json:encode-json-to-string
+                         '((message . "Ok"))))
+          (error (e)
+            (declare (ignore e))
+            (http-condition 400 "Malformed user data"))))))
+#+end_src
+
+#+RESULTS:
+: #<STANDARD-METHOD REST-SERVER::USERS (SNOOZE-VERBS:POST
+:                                       SNOOZE-TYPES:APPLICATION/JSON) {10020CF5C3}>
+
+* Inicialização do servidor
+:PROPERTIES:
+:header-args:lisp: :tangle src/server.lisp
+:END:
+
+#+begin_src lisp
+(in-package #:rest-server)
+#+end_src
+
+#+RESULTS:
+: STOP-SERVER
+
+** Handler do servidor
+
+#+begin_src lisp
+(defparameter *server-handler* nil)
+#+end_src
+
+** Iniciando o servidor
+
+#+begin_src lisp
+(defun start-server ()
+  (unless *server-handler*
+    (db:db-connect)
+    (setf *server-handler*
+          (clack:clackup (snooze:make-clack-app)
+                         :port 9003))
+    t))
+#+end_src
+
+#+RESULTS:
+: START-SERVER
+
+** Encerrando o servidor
+
+#+begin_src lisp
+(defun stop-server ()
+  (when *server-handler*
+    (clack:stop *server-handler*)
+    (setf *server-handler* nil)
+    (db:db-disconnect)
+    t))
+#+end_src
+
+#+RESULTS:
+: STOP-SERVER
+
+* Utilitários
+:PROPERTIES:
+:header-args:lisp: :tangle src/util.lisp
+:END:
+
+#+begin_src lisp
+(in-package #:rest-server.util)
+#+end_src
+
+** Obtendo elemento de uma alist ao usar macros
+
+#+begin_src lisp
+(defmacro agetf (key alist)
+  `(cdr (assoc ,key ,alist)))
+#+end_src
+
+* Banco de dados
+
+** Usando PostgreSQL pelo Docker
+
+Usaremos Docker para  criar um banco de dados  com PostgreSQL, chamado
+=cl-rest=, com uma senha =docker=. Redirecionaremos a porta padrão =5432= do
+contêiner para a máquina, e faremos a imagem a partir de PostgreSQL 11.
+
+#+begin_src bash :eval no
+docker run --name cl-rest -e POSTGRES_PASSWORD=docker -p 5432:5432 -d postgres:11
+#+end_src
+
+#+RESULTS:
+: d6cdbe8e7697835291043db255d84d1dd69a44dcaa46ce207df38eebdecda56c
+
+Uma dica  útil é que podemos  ver quais contêineres estão  em execução
+usando o comando:
+
+#+begin_src bash
+docker ps
+#+end_src
+
+#+RESULTS:
+| CONTAINER    | ID          | IMAGE                | COMMAND | CREATED | STATUS | PORTS | NAMES |       |   |        |                        |         |
+| d6cdbe8e7697 | postgres:11 | docker-entrypoint.s… | About   | a       | minute | ago   | Up    | About | a | minute | 0.0.0.0:5432->5432/tcp | cl-rest |
+
+...ou ver todos os contêineres da máquina com:
+
+#+begin_src bash
+docker ps -a
+#+end_src
+
+#+RESULTS:
+| CONTAINER    | ID          | IMAGE                | COMMAND | CREATED | STATUS | PORTS  | NAMES |       |       |        |                        |         |
+| d6cdbe8e7697 | postgres:11 | docker-entrypoint.s… | About   | a       | minute | ago    | Up    | About | a     | minute | 0.0.0.0:5432->5432/tcp | cl-rest |
+| b27dfc60f958 | postgres:11 | docker-entrypoint.s… | 5       | weeks   | ago    | Exited | (0)   |     4 | weeks | ago    | database               |         |
+
+Podemos  também  utilizar  os  comandos  a  seguir  para  controlar  o
+contêiner.
+
+#+begin_src bash :eval no
+docker start cl-rest # Inicia o contêiner
+docker stop cl-rest  # Mata o contêiner
+docker logs cl-rest  # Mostra os logs do contêiner
+#+end_src
+
+** Criando um banco de dados
+
+Recomendo utilizar o Postbird para criar um banco de dados. Conecte-se
+ao Postgres através dele, e crie uma database chamada =cl-rest=.
+
+Agora, vamos configurar o =mito= para se conectar ao Postgres.
+
+** Conexão
+:PROPERTIES:
+:header-args:lisp: :tangle src/db.lisp
+:END:
+
+#+begin_src lisp
+(in-package #:rest-server.db)
+#+end_src
+
+#+begin_src lisp
+(defun db-connect ()
+  (mito:connect-toplevel :postgres
+                         :username "postgres"
+                         :database-name "cl-rest"
+                         :password "docker"))                         
+#+end_src
+
+#+RESULTS:
+: DB-CONNECT
+
+#+begin_src lisp
+(defun db-disconnect ()
+  (mito:disconnect-toplevel))
+#+end_src
+
+#+RESULTS:
+: DB-DISCONNECT
+
+*** Garantindo existência das tabelas
+
+#+begin_src lisp
+(defparameter *orm-tables*
+  '(user))
+#+end_src
+
+#+RESULTS:
+: *ORM-TABLES*
+
+#+begin_src lisp
+(defun db-migrate-tables ()
+  (mapcar #'mito:ensure-table-exists *orm-tables*))
+#+end_src
+
+#+RESULTS:
+: DB-MIGRATE-TABLES
+
+*** Semeando a base de dados
+
+#+begin_src lisp
+(defun db-seed ()
+  (labels ((seed-users (seed)
+             (loop for user in seed
+                do (mito:insert-dao
+                    (make-instance
+                     'user
+                     :name (util:agetf :name user)
+                     :address (util:agetf :address user)
+                     :mail (util:agetf :mail user)
+                     :pass (util:agetf :pass user))))))
+    (seed-users '(((:name    . "Fulano da Silva")
+                   (:address . "Rua dos Bobos, 0")
+                   (:mail    . "fulano@exemplo.com")
+                   (:pass    . "123456"))
+                  ((:name    . "Ciclano da Silva")
+                   (:address . "Rua dos Bobos, 1")
+                   (:mail    . "ciclano@exemplo.com")
+                   (:pass    . "123456"))))))
+#+end_src
+
+#+RESULTS:
+: DB-SEED
+
+** Modelos
+
+*** Usuário
+:PROPERTIES:
+:header-args:lisp: :tangle src/models/user.lisp
+:END:
+
+#+begin_src lisp
+(in-package #:rest-server.db)
+
+(defclass user ()
+  ((name :col-type (:varchar 80)
+         :initarg :name
+         :accessor user-name)
+   (address :col-type (:varchar 255)
+            :initarg :address
+            :accessor user-address)
+   (mail :col-type (:varchar 64)
+         :initarg :mail
+         :accessor user-mail)
+   (pass :col-type (:varchar 64)
+         :initarg :pass
+         :accessor user-pass))
+  (:metaclass mito:dao-table-class)
+  (:unique-keys mail))
+#+end_src
+
+#+RESULTS:
+: #<DAO-TABLE-CLASS REST-SERVER.DB::USER>
+
+#+begin_src lisp
+(defmethod into-alist ((user user))
+  `((:id      . ,(mito:object-id user))
+    (:name    . ,(user-name user))
+    (:address . ,(user-address user))
+    (:mail    . ,(user-mail user))
+    (:pass    . ,(user-pass user))))
+#+end_src
+
+#+RESULTS:
+: #<STANDARD-METHOD REST-SERVER.DB:INTO-ALIST (USER) {1001D67FA3}>
+
+#+begin_src lisp
+(defmethod into-json ((user user))
+  (json:encode-json-to-string (into-alist user)))
+#+end_src
+
+#+RESULTS:
+: #<STANDARD-METHOD REST-SERVER.DB:INTO-JSON (USER) {10016B7903}>
+
+#+begin_src lisp
+(defmethod from-alist ((type (eql :user)) alist)
+  (macrolet ((get-field (field)
+               `(util:agetf ,field alist)))
+    (make-instance 'user
+                   :name (get-field :name)
+                   :address (get-field :address)
+                   :mail (get-field :mail)
+                   :pass (get-field :pass))))
+#+end_src
+
+#+RESULTS:
+: #<STANDARD-METHOD REST-SERVER.DB:FROM-ALIST ((EQL :USER) T) {1006843C13}>
