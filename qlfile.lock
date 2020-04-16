@@ -1,0 +1,24 @@
+("quicklisp" .
+ (:class qlot/source/dist:source-dist
+  :initargs (:distribution "http://beta.quicklisp.org/dist/quicklisp.txt" :%version :latest)
+  :version "2020-03-25"))
+("cl-json" .
+ (:class qlot/source/ql:source-ql
+  :initargs (:%version "2020-03-25")
+  :version "ql-2020-03-25"))
+("snooze" .
+ (:class qlot/source/ql:source-ql
+  :initargs (:%version "2020-03-25")
+  :version "ql-2020-03-25"))
+("clack" .
+ (:class qlot/source/ql:source-ql
+  :initargs (:%version "2020-03-25")
+  :version "ql-2020-03-25"))
+("mito" .
+ (:class qlot/source/ql:source-ql
+  :initargs (:%version "2020-03-25")
+  :version "ql-2020-03-25"))
+("ironclad" .
+ (:class qlot/source/ql:source-ql
+  :initargs (:%version "2020-03-25")
+  :version "ql-2020-03-25"))

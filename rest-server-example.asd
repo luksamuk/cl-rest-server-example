@@ -4,8 +4,7 @@
     :license "MIT"
     :version "0.0.1"
     :serial t
-    :depends-on (#:uiop
-                 #:cl-json
+    :depends-on (#:cl-json
                  #:snooze
                  #:clack
                  #:mito

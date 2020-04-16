@@ -9,6 +9,8 @@
 * Sumário :TOC:
 - [[#introdução][Introdução]]
 - [[#dependências][Dependências]]
+  - [[#programas][Programas]]
+  - [[#systems-bibliotecas][Systems (bibliotecas)]]
   - [[#utilitários-extras][Utilitários extras]]
 - [[#definindo-o-projeto][Definindo o Projeto]]
   - [[#definição-do-system][Definição do System]]
@@ -47,6 +49,120 @@ Esta aplicação  procura seguir um padrão  /Model-View-Controller/ (MVC),
 comunicando-se primariamente através do formato JSON.
 
 * Dependências
+
+** Programas
+
+Os programas  a seguir serão  utilizados neste projeto para  lidar com
+algumas dependências, em especial da aplicação a ser desenvolvida.
+
+- [[https://github.com/roswell/roswell][Roswell]]: Instalador e launcher para aplicações Common Lisp.
+- [[http://www.sbcl.org/][SBCL]]: Steel Bank Common Lisp;  compilador de Common Lisp, instalável
+  via Roswell.
+- [[https://www.quicklisp.org/beta/][Quicklisp]]:  Gerenciador  de  bibliotecas   e  projetos  para  Common
+  Lisp.  Com ele,  é possível  definir e  instalar localmente  /systems/
+  pertinentes  para  seus  projetos.  É  incluido  automaticamente  na
+  configuração do Roswell.
+- [[https://github.com/fukamachi/qlot][Qlot]]:   Gerenciador   de   bibliotecas   por   projeto   de   Common
+  Lisp. Basicamente,  instala uma versão  do Quicklisp para  o projeto
+  atual  e usa-a  neste projeto.  Assim, não  será necessário  incluir
+  nosso /system/ no diretório ~local-projects~  do Roswell, por exemplo, e
+  poderemos definir versões fixas das bibliotecas que utilizarmos.
+
+*** Dependências opcionais
+
+- [[https://www.gnu.org/software/emacs/][Emacs]] e  [[https://github.com/slime/slime][SLIME]]: Utilizo o editor  de texto Emacs para  escrever este
+  documento e programar  o projeto em questão. Também  utilizo o SLIME
+  (Superior Lisp Interaction Mode for Emacs) para executar e interagir
+  ao vivo  com o projeto, enquanto  ele executa.
+ 
+Há editores de  texto alternativos e diferentes formas  de se conectar
+  um servidor  [[https://github.com/brown/swank-client][Swank]] de  Common Lisp (por  exemplo, os  projetos [[https://github.com/kovisoft/slimv][Slimv]]
+  para [[https://www.vim.org/][Vim]]  ou [[https://atom.io/packages/slima][SLIMA]]  para [[https://atom.io/][Atom]]). Ainda  assim, caso  esteja disposto,
+  recomendo que aprenda a utilizar as  ferramentas pelo Emacs, que é o
+  editor livre padrão   para os usuários de Common Lisp.
+
+*** Configurando o Roswell
+
+É  possível   instalar  o   Roswell  em  várias   distribuições  Linux
+existentes. Em  especial, a distribuição  Void Linux (que  utilizo) já
+possui  o mesmo  em seus  repositórios. Caso  você precise  instalá-lo
+manualmente, siga o repositório do [[https://github.com/roswell/roswell][Roswell]].
+
+Após  sua instalação,  abra  o  console e  utilize  a ferramenta  para
+instalar a versão pré-compilada do SBCL:
+
+#+begin_src bash :tangle no :eval no
+ros install sbcl-bin
+#+end_src
+
+Você  poderá executar  este comando  esporadicamente para  atualizar o
+SBCL. Não  é necessário instalar o  SBCL no sistema, o  Roswell poderá
+gerenciar isto para você.
+
+Caso você  instale outra  implementação de  Common Lisp  pelo Roswell,
+recomendo trocar novamente para o SBCL com o comando:
+
+#+begin_src bash :tangle no :eval no
+ros use sbcl-bin
+#+end_src
+
+*** Configurando o Qlot
+
+O Qlot  pode ser instalado facilmente  via Roswell, porém, como  não é
+uma implementação alternativa  de Common Lisp (e sim  um utilitário do
+mesmo que pode ser usado pelo console), basta executarmos:
+
+#+begin_src bash :tangle no :eval no
+ros install qlot
+#+end_src
+
+Em seguida,  na raiz do projeto,  criamos um arquivo com  o exato nome
+~qlfile~, que  lista as bibliotecas e  a versão das mesmas  que queremos
+utilizar, da forma como se vê a seguir:
+
+#+begin_src fundamental :tangle qlfile
+ql cl-json  2020-03-25
+ql snooze   2020-03-25
+ql clack    2020-03-25
+ql mito     2020-03-25
+ql ironclad 2020-03-25
+#+end_src
+
+Nosso último  passo é executar  o ~qlot~  no console para  que Quicklisp
+seja instalado para este projeto:
+
+#+begin_src bash :tangle no :eval no
+qlot install
+#+end_src
+
+Isto também criará um arquivo ~qlfile.lock~ na raiz do seu repositório.
+
+Não se  esqueça de adicionar  o diretório  ~.qlot~ ao ~.gitignore~  do seu
+repositório Git.
+
+**** Dica sobre o SLIME
+
+Caso você esteja  utilizando Emacs com SLIME, poderá forçar  o SLIME a
+usar a instalação local de Quicklisp  do Qlot. Para tanto, adicione às
+suas configurações do Emacs a função:
+
+#+begin_src emacs-lisp :eval no :tangle no
+(defun slime-qlot-exec (directory)
+  (interactive (list (read-directory-name "Project directory: ")))
+  (slime-start :program "qlot"
+               :program-args '("exec" "ros" "-S" "." "run")
+               :directory directory
+               :name 'qlot
+               :env (list (concat "PATH="
+                                  (mapconcat 'identity
+                                             exec-path
+                                             ":")))))
+#+end_src
+
+E então,  ao invés de executar  ~slime~ para iniciar a  imagem Lisp, use
+~slime-qlot-exec~.
+
+** Systems (bibliotecas)
 
 Como /systems/ e bibliotecas de Common Lisp, usaremos:
 
@@ -97,8 +213,7 @@ que define.
     :license "MIT"
     :version "0.0.1"
     :serial t
-    :depends-on (#:uiop
-                 #:cl-json
+    :depends-on (#:cl-json
                  #:snooze
                  #:clack
                  #:mito
