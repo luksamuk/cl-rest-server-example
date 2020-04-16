@@ -660,7 +660,9 @@ Antes de  gerarmos as tabelas  de fato,  podemos executar o  ~mito~ pelo
 console  para que  este gere  arquivos  ~.sql~ das  migrações, com  seus
 respectivos timestamps.
 
-Esta opção é muito útil caso você queira garantir que seus 
+Esta opção  é muito útil  caso você  queira garantir que  suas tabelas
+sejam versionadas,  e que  o versionamento seja  feito em  seu próprio
+arquivo de código SQL.
 
 Para tanto:
 
@@ -678,7 +680,9 @@ instalação  do  Quicklisp  pelo  Qlot para  criar  as  migrações  como
 necessário:
 
 #+begin_src bash :eval no :tangle no
-qlot exec mito generate-migrations -t postgres -u postgres -d cl-rest -p docker -P 5432 -s rest-server-example -D ./mito
+qlot exec mito generate-migrations -t postgres \
+     -u postgres -p docker -P 5432 -d cl-rest \
+     -s rest-server-example -D ./mito
 #+end_src
 
 Destrinchando este comando, temos os seguintes argumentos:
@@ -687,9 +691,9 @@ Destrinchando este comando, temos os seguintes argumentos:
   PostgreSQL;
 - =-u postgres=:  Anuncia o  nome do  usuário do  banco de  dados. Neste
   caso, sendo ~postgres~;
-- =-d cl-rest=: Anuncia o nome do banco de dados (~cl-rest~);
 - =-p docker= Anuncia a senha de acesso do usuário;
 - =-P 5432=: Anuncia a porta na qual o banco de dados está operando;
+- =-d cl-rest=: Anuncia o nome do banco de dados (~cl-rest~);
 - =-D ./mito=: Anuncia o diretório onde as migrações serão armazenadas.
 
 Lembremos sempre que informações sensíveis (usuário e senha do banco
@@ -710,7 +714,9 @@ Para avaliar o estado das migrações em questão, podemos usar novamente
 o ~mito~, desta vez sem necessidade do respaldo do Qlot:
 
 #+begin_src bash :tangle no :cache yes :exports both :results verbatim :eval no
-mito migration-status -t postgres -u postgres -d cl-rest -p docker -P 5432 -D ./mito
+mito migration-status -t postgres \
+     -u postgres -p docker -P 5432 -d cl-rest \
+     -D ./mito
 #+end_src
 
 #+RESULTS[794b2433a8feb8a1e024e55a54c1bd83190f1140]:
@@ -722,7 +728,9 @@ mito migration-status -t postgres -u postgres -d cl-rest -p docker -P 5432 -D ./
 Agora, podemos finalmente migrar o banco de dados:
 
 #+begin_src bash :tangle no :cache yes :exports both :results verbatim
-mito migrate -t postgres -u postgres -d cl-rest -p docker -P 5432 -D ./mito
+mito migrate -t postgres \
+     -u postgres -p docker -P 5432 -d cl-rest \
+     -D ./mito
 #+end_src
 
 #+RESULTS[9e53747730c5174881ffd71a0eacf860447b3fba]:
@@ -769,24 +777,27 @@ utilizadas pelos scripts em si.
 
 #+begin_src bash :tangle scripts/gen-migrations.sh :eval no
 #!/bin/bash
-
-qlot exec mito generate-migrations -t postgres -u postgres -d cl-rest -p docker -P 5432 -s rest-server-example -D ./mito
+qlot exec mito generate-migrations -t postgres \
+     -u postgres -p docker -P 5432 -d cl-rest \
+     -s rest-server-example -D ./mito
 #+end_src
 
 ~scripts/migration-status.sh~:
 
 #+begin_src bash :tangle scripts/migration-status.sh :eval no
 #!/bin/bash
-
-mito migration-status -t postgres -u postgres -d cl-rest -p docker -P 5432 -D ./mito
+mito migration-status -t postgres \
+     -u postgres -p docker -P 5432 -d cl-rest \
+     -D ./mito
 #+end_src
 
 ~scripts/migrate.sh~:
 
 #+begin_src bash :tangle scripts/migrate.sh :eval no
 #!/bin/bash
-
-mito migrate -t postgres -u postgres -d cl-rest -p docker -P 5432 -D ./mito
+mito migrate -t postgres \
+     -u postgres -p docker -P 5432 -d cl-rest \
+     -D ./mito
 #+end_src
 
 O último passo é permitir  que estes arquivos sejam executáveis. Basta
