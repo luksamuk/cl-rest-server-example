@@ -9,36 +9,61 @@
 * Sumário :TOC:
 - [[#introdução][Introdução]]
 - [[#dependências][Dependências]]
+  - [[#utilitários-extras][Utilitários extras]]
 - [[#definindo-o-projeto][Definindo o Projeto]]
   - [[#definição-do-system][Definição do System]]
-  - [[#definição-do-pacote-de-utilitários][Definição do pacote de utilitários]]
-  - [[#definição-do-pacote-de-banco-de-dados][Definição do pacote de banco de dados]]
-  - [[#definição-do-pacote-principal][Definição do pacote principal]]
-- [[#rotas][Rotas]]
-  - [[#lista-de-usuários][Lista de usuários]]
-  - [[#registrar-usuário][Registrar usuário]]
+  - [[#definição-dos-pacotes][Definição dos pacotes]]
 - [[#inicialização-do-servidor][Inicialização do servidor]]
-  - [[#handler-do-servidor][Handler do servidor]]
+  - [[#dados-globais-do-servidor][Dados globais do servidor]]
   - [[#iniciando-o-servidor][Iniciando o servidor]]
   - [[#encerrando-o-servidor][Encerrando o servidor]]
+- [[#rotas][Rotas]]
+  - [[#relação-de-rotas][Relação de rotas]]
+  - [[#listagem-de-usuários][Listagem de usuários]]
+  - [[#registrar-usuário][Registrar usuário]]
 - [[#utilitários][Utilitários]]
   - [[#obtendo-elemento-de-uma-alist-ao-usar-macros][Obtendo elemento de uma alist ao usar macros]]
+  - [[#validando-um-json-para-uma-rota][Validando um JSON para uma rota]]
+  - [[#validando-uma-alist-de-usuário-para-registro][Validando uma alist de usuário para registro]]
 - [[#banco-de-dados][Banco de dados]]
   - [[#usando-postgresql-pelo-docker][Usando PostgreSQL pelo Docker]]
   - [[#criando-um-banco-de-dados][Criando um banco de dados]]
   - [[#conexão][Conexão]]
   - [[#modelos][Modelos]]
+  - [[#controladores][Controladores]]
 
 * Introdução
 
-A fazer. Mais detalhes posteriormente.
+O  objetivo deste  projeto  é  criar um  sistema  de gerenciamento  de
+usuários de um sistema, o que inclui /login/ e uma /lista de atividades/.
+
+Este projeto está sendo  desenvolvido através de programação instruída
+(/literate programming/),  de forma a  apresentar um exemplo  prático de
+aplicação REST, feita totalmente em Common Lisp.
+
+Esta aplicação  procura seguir um padrão  /Model-View-Controller/ (MVC),
+comunicando-se primariamente através do formato JSON.
 
 * Dependências
+
+Como /systems/ e bibliotecas de Common Lisp, usaremos:
 
 - [[https://github.com/joaotavora/snooze][Snooze]], para criação de aplicações REST;
 - [[https://quickref.common-lisp.net/clack.html][Clack]], servidor que trabalha sob o Snooze;
 - [[https://quickref.common-lisp.net/cl-json.html][cl-json]], para /parsing/ e serialização de informações em JSON;
-- [[https://github.com/fukamachi/mito][Mito]], para interação com o banco de dados.
+- [[https://github.com/fukamachi/mito][Mito]], para interação com o banco de dados;
+- [[https://github.com/sharplispers/ironclad][Ironclad]], para operações relacionadas a criptografia.
+
+** Utilitários extras
+
+Estes utilitários  não dizem respeito  diretamente a Common  Lisp, mas
+serão usados para  que a aplicação seja desenvolvida.  Esta lista pode
+mudar.
+
+- [[https://www.electronjs.org/apps/postbird][Postbird]], para consultar  diretamente o banco de  dados PostgreSQL e
+  criar tabelas manualmente;
+- [[https://insomnia.rest/][Insomnia]], para testar requisições REST;
+- [[https://www.docker.com/][Docker]], para utilização do PostgreSQL dentro de um contêiner.
 
 * Definindo o Projeto
 
@@ -47,14 +72,33 @@ A fazer. Mais detalhes posteriormente.
 :header-args:lisp: :tangle rest-server-example.asd
 :END:
 
+O primeiro passo  para a definição de  um projeto é a  definição de um
+/system/ do  ASDF, que nada mais  é que uma listagem  de propriedades do
+projeto, dependências  a serem obtidas através  do Quicklisp (processo
+realizado automaticamente no carregamento  deste /system/) e listagem de
+diretórios e arquivos do projeto.
+
+Um /system/ pode  ser compreendido como uma coleção de  /pacotes/. Uma vez
+que o /system/  é carregado, os pacotes tornam-se  disponíveis na imagem
+Lisp e podem ser utilizados como requisitados.
+
+Normalmente, /systems/ são definidos em  arquivos com extensão =*.asd=, no
+diretório do projeto,  e o arquivo costuma ter o  mesmo nome do /system/
+que define.
+
 #+begin_src lisp
 (asdf:defsystem #:rest-server-example
-    :description "Exemplo de um servidor REST"
+    :description "Exemplo de um servidor REST."
     :author "Lucas S. Vieira <lucasvieira@protonmail.com>"
     :license "MIT"
     :version "0.0.1"
     :serial t
-    :depends-on (#:uiop #:cl-json #:snooze #:clack #:mito)
+    :depends-on (#:uiop
+                 #:cl-json
+                 #:snooze
+                 #:clack
+                 #:mito
+                 #:ironclad)
     :components
     ((:file "package")
      (:module "src"
@@ -66,25 +110,33 @@ A fazer. Mais detalhes posteriormente.
                       :components ((:file "user")))))))
 #+end_src
 
-** Definição do pacote de utilitários
+** Definição dos pacotes
 :PROPERTIES:
 :header-args:lisp: :tangle package.lisp
 :END:
+
+A  seguir, definiremos  os  pacotes do  projeto. Simplificaremos  este
+processo através  da definição  de um  único arquivo  =package.lisp=, na
+raiz do projeto, que define todos os pacotes a serem utilizados.
+
+*** Definição do pacote de utilitários
+
+Este  pacote de  utilitários possui  funções e  macros auxiliares  que
+podem ser usados globalmente.
 
 #+begin_src lisp
 (defpackage #:rest-server.util
   (:nicknames #:util)
   (:use #:cl)
-  (:export #:agetf))
+  (:export #:agetf
+           #:route-validate-json
+           #:post-valid-user-p))
 #+end_src
 
-#+RESULTS:
-: #<PACKAGE "REST-SERVER.UTIL">
+*** Definição do pacote de banco de dados
 
-** Definição do pacote de banco de dados
-:PROPERTIES:
-:header-args:lisp: :tangle package.lisp
-:END:
+Este pacote engloba todas as operações relacionadas ao banco de dados,
+o que também inclui /models/ e /controllers/.
 
 #+begin_src lisp
 (defpackage #:rest-server.db
@@ -98,13 +150,11 @@ A fazer. Mais detalhes posteriormente.
            #:user))
 #+end_src
 
-#+RESULTS:
-: #<PACKAGE "REST-SERVER.DB">
+*** Definição do pacote principal
 
-** Definição do pacote principal
-:PROPERTIES:
-:header-args:lisp: :tangle package.lisp
-:END:
+Este pacote  engloba as  operações principais  da aplicação,  como seu
+ponto de entrada para que a  aplicação seja iniciada ou encerrada, bem
+como suas /rotas/.
 
 #+begin_src lisp
 (defpackage #:rest-server
@@ -114,8 +164,66 @@ A fazer. Mais detalhes posteriormente.
            #:stop-server))
 #+end_src
 
-#+RESULTS:
-: #<PACKAGE "REST-SERVER">
+* Inicialização do servidor
+:PROPERTIES:
+:header-args:lisp: :tangle src/server.lisp
+:END:
+
+#+begin_src lisp
+(in-package #:rest-server)
+#+end_src
+
+O  primeiro passo  da  nossa aplicação  é fazer  com  que a  aplicação
+conecte-se ao banco  de dados e então inicie o  servidor REST na porta
+padrão da aplicação (~9003~).
+
+** Dados globais do servidor
+
+Iniciamos  definindo dois  parâmetros. O  primeiro é  o /handle/  para o
+servidor, criado pelo  pacote ~clack~, que será uma  instância pela qual
+poderemos gerenciá-lo.  Este /handle/ será modificado  mediante início e
+encerramento do servidor.
+
+O segundo é  o valor de configuração  para a /porta/ na  qual o servidor
+operará, ouvindo mensagens de acordo com o necessário.
+
+#+begin_src lisp
+(defparameter *server-handler* nil)
+(defparameter *server-port* 9003)
+#+end_src
+
+** Iniciando o servidor
+
+Quando  esta função  é  chamada, caso  o servidor  já  não tenha  sido
+iniciado, ele  se conectará ao banco  de dados, e então  o /handle/ será
+atualizado  com uma  instância  de um  servidor  do ~clack~,  finalmente
+retornando o símbolo ~T~ mediante sucesso.
+
+#+begin_src lisp
+(defun start-server ()
+  (unless *server-handler*
+    (db:db-connect)
+    (setf *server-handler*
+          (clack:clackup (snooze:make-clack-app)
+                         :port *server-port*))
+    t))
+#+end_src
+
+** Encerrando o servidor
+
+Quando esta função é chamada, caso o servidor esteja ativo, o servidor
+~clack~ será interrompido e o /handle/ assumirá o valor ~NIL~. Finalmente, a
+aplicação se desconectará do banco de dados, retornando, finalmente, o
+símbolo ~T~ no encerramento.
+
+#+begin_src lisp
+(defun stop-server ()
+  (when *server-handler*
+    (clack:stop *server-handler*)
+    (setf *server-handler* nil)
+    (db:db-disconnect)
+    t))
+#+end_src
 
 * Rotas
 :PROPERTIES:
@@ -126,10 +234,35 @@ A fazer. Mais detalhes posteriormente.
 (in-package #:rest-server)
 #+end_src
 
-** Lista de usuários
+O arquivo =src/routes.lisp= engloba rotas da aplicação, sendo a porta de
+entrada e saída do servidor para com o /frontend/.
 
-- =GET /users=
-- =GET /users/id=
+A   aplicação  responde   com   seu  ponto   de   entrada  padrão   em
+~localhost:9003~.
+
+** Relação de rotas
+
+Esta é a relação de métodos e rotas da aplicação, bem como as entradas
+e  saídas esperadas  mediante  sucesso. Absolutamente  todas as  rotas
+recebem e enviam JSON em forma de /string/.
+
+|--------+------------+----------------------+----------------------|
+| Método | Rota       | Entrada              | Saída                |
+|--------+------------+----------------------+----------------------|
+| GET    | ~/users~     | -                    | Lista de usuários.   |
+| GET    | ~/users/:id~ | -                    | Dados de um usuário. |
+| POST   | ~/users~     | Dados de um usuário. | Mensagem de OK.      |
+|--------+------------+----------------------+----------------------|
+
+** Listagem de usuários
+
+Esta definição trata dos seguintes métodos e rotas:
+
+- ~GET /users~
+- ~GET /users/id~
+
+Estes  métodos retornam  arquivos JSON  com os  dados de  todos ou  um
+usuário, respectivamente.
 
 #+begin_src lisp
 (defroute users (:get "application/json" &optional (id 'all))
@@ -142,106 +275,51 @@ A fazer. Mais detalhes posteriormente.
             (db:into-json the-user)))))
 #+end_src
 
-#+RESULTS:
-: #<STANDARD-METHOD REST-SERVER::USERS (SNOOZE-VERBS:GET
-:                                       SNOOZE-TYPES:APPLICATION/JSON) {10023445C3}>
-
 ** Registrar usuário
 
-#+begin_src lisp
-(defmacro validate-json (payload)
-  (let ((payload-sym (gensym)))
-    `(let ((,payload-sym ,payload))
-       (handler-case (json:decode-json-from-string
-                      ,payload-sym)
-         (error (e)
-           (declare (ignore e))
-           (http-condition 400 "Malformed JSON: ~a" ,payload-sym))))))
+Esta definição trata dos métodos e rotas:
+
+- ~POST /users~
+- ~POST /users/id~
+
+...onde a primeira requisição é a esperada, e a segunda rota é /inválida/.
+
+A requisição ~POST~  em ~/users~ espera por um arquivo  JSON válido com os
+seguintes campos, para que um usuário seja registrado no sistema:
+
+- ~"name"~ -- Nome do usuário;
+- ~"address"~ -- Endereço do usuário;
+- ~"mail"~ -- E-mail do usuário;
+- ~"pass"~ -- Senha do usuário registrado em texto plano.
+
+Caso  os  dados  sejam  válidos  e o  usuário  seja  registrado,  será
+retornado um JSON:
+
+#+begin_src json :tangle no
+{ "message": "Ok" }
 #+end_src
 
-#+RESULTS:
-: VALIDATE-JSON
+# TODO: Receber senha em texto plano é algo viável mesmo? Será que
+# não seria  melhor fazer o  hash no client-side  ou ao menos  falar a
+# respeito de SSL?
 
-#+begin_src lisp
-(defun valid-user-p (user-data)
-  (let ((fields '(:name :address :mail :pass)))
-    (loop for field in user-data
-       always (and (consp field)
-                   (stringp (cdr field))
-                   (and (member (car field) fields))))))
-#+end_src
-
-#+RESULTS:
-: VALID-USER-P
-
-- =POST /users=  onde o  payload precisa  ser um  JSON válido  com NAME,
-  ADDRESS, MAIL, PASS.
+Abaixo, definimos tais rotas.
 
 #+begin_src lisp
 (defroute users (:post "application/json" &optional id)
-  (declare (ignore id))
-  (let ((object (validate-json (payload-as-string))))
-    (if (not (valid-user-p object))
-        (http-condition 400 "Malformed user data")
-        (handler-case (let ((user (db:from-alist :user object)))
-                        (mito:insert-dao user)
-                        (json:encode-json-to-string
-                         '((message . "Ok"))))
-          (error (e)
-            (declare (ignore e))
-            (http-condition 400 "Malformed user data"))))))
+  (if id
+      (http-condition 403 "Route does not accept POST.")
+      (let ((object (util:route-validate-json (payload-as-string))))
+        (if (not (util:post-valid-user-p object))
+            (http-condition 400 "Malformed user data")
+            (handler-case (let ((user (db:from-alist :user object)))
+                            (mito:insert-dao user) ; todo: verify
+                            (json:encode-json-to-string
+                             '((message . "Ok"))))
+              (error (e)
+                (declare (ignore e))
+                (http-condition 400 "Malformed user data")))))))
 #+end_src
-
-#+RESULTS:
-: #<STANDARD-METHOD REST-SERVER::USERS (SNOOZE-VERBS:POST
-:                                       SNOOZE-TYPES:APPLICATION/JSON) {10020CF5C3}>
-
-* Inicialização do servidor
-:PROPERTIES:
-:header-args:lisp: :tangle src/server.lisp
-:END:
-
-#+begin_src lisp
-(in-package #:rest-server)
-#+end_src
-
-#+RESULTS:
-: STOP-SERVER
-
-** Handler do servidor
-
-#+begin_src lisp
-(defparameter *server-handler* nil)
-#+end_src
-
-** Iniciando o servidor
-
-#+begin_src lisp
-(defun start-server ()
-  (unless *server-handler*
-    (db:db-connect)
-    (setf *server-handler*
-          (clack:clackup (snooze:make-clack-app)
-                         :port 9003))
-    t))
-#+end_src
-
-#+RESULTS:
-: START-SERVER
-
-** Encerrando o servidor
-
-#+begin_src lisp
-(defun stop-server ()
-  (when *server-handler*
-    (clack:stop *server-handler*)
-    (setf *server-handler* nil)
-    (db:db-disconnect)
-    t))
-#+end_src
-
-#+RESULTS:
-: STOP-SERVER
 
 * Utilitários
 :PROPERTIES:
@@ -257,6 +335,30 @@ A fazer. Mais detalhes posteriormente.
 #+begin_src lisp
 (defmacro agetf (key alist)
   `(cdr (assoc ,key ,alist)))
+#+end_src
+
+** Validando um JSON para uma rota
+
+#+begin_src lisp
+(defmacro route-validate-json (payload)
+  (let ((payload-sym (gensym)))
+    `(let ((,payload-sym ,payload))
+       (handler-case (json:decode-json-from-string
+                      ,payload-sym)
+         (error (e)
+           (declare (ignore e))
+           (http-condition 400 "Malformed JSON: ~a" ,payload-sym))))))
+#+end_src
+
+** Validando uma alist de usuário para registro
+
+#+begin_src lisp
+(defun post-valid-user-p (user-data)
+  (let ((fields '(:name :address :mail :pass)))
+    (loop for field in user-data
+       always (and (consp field)
+                   (stringp (cdr field))
+                   (and (member (car field) fields))))))
 #+end_src
 
 * Banco de dados
@@ -447,3 +549,7 @@ Agora, vamos configurar o =mito= para se conectar ao Postgres.
 
 #+RESULTS:
 : #<STANDARD-METHOD REST-SERVER.DB:FROM-ALIST ((EQL :USER) T) {1006843C13}>
+
+** Controladores
+
+A fazer.

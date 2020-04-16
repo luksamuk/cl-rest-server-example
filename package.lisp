@@ -1,7 +1,9 @@
 (defpackage #:rest-server.util
   (:nicknames #:util)
   (:use #:cl)
-  (:export #:agetf))
+  (:export #:agetf
+           #:route-validate-json
+           #:post-valid-user-p))
 
 (defpackage #:rest-server.db
   (:nicknames #:db)
