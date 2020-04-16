@@ -9,8 +9,8 @@
 * Sumário :TOC:
 - [[#introdução][Introdução]]
 - [[#dependências][Dependências]]
+  - [[#sistemas][Sistemas]]
   - [[#programas][Programas]]
-  - [[#systems-bibliotecas][Systems (bibliotecas)]]
   - [[#utilitários-extras][Utilitários extras]]
 - [[#definindo-o-projeto][Definindo o Projeto]]
   - [[#definição-do-system][Definição do System]]
@@ -50,10 +50,29 @@ comunicando-se primariamente através do formato JSON.
 
 * Dependências
 
+** Sistemas
+
+Em Common  Lisp, aplicações são  divididas em pacotes  (/packages/), que
+por sua vez, são redistribuidos em sistemas (/systems/).
+
+Carregar um /system/ significa colocar todos os /packages/ do mesmo no seu
+ambiente  da imagem  Lisp  em execução,  de forma  que  os objetos  do
+ecossistema possam ser acessados e manipulados em runtime.
+
+Para criar nosso servidor REST, carregaremos os seguintes /systems/:
+
+- [[https://github.com/joaotavora/snooze][Snooze]], para criação de aplicações REST;
+- [[https://quickref.common-lisp.net/clack.html][Clack]], servidor que trabalha sob o Snooze;
+- [[https://quickref.common-lisp.net/cl-json.html][cl-json]], para /parsing/ e serialização de informações em JSON;
+- [[https://github.com/fukamachi/mito][Mito]], para interação com o banco de dados;
+- [[https://github.com/sharplispers/ironclad][Ironclad]], para operações relacionadas a criptografia.
+
+# TODO: Ver mito-auth para autenticação do usuário.
+
 ** Programas
 
 Os programas  a seguir serão  utilizados neste projeto para  lidar com
-algumas dependências, em especial da aplicação a ser desenvolvida.
+algumas dependências, em especial as da aplicação a ser desenvolvida.
 
 - [[https://github.com/roswell/roswell][Roswell]]: Instalador e launcher para aplicações Common Lisp.
 - [[http://www.sbcl.org/][SBCL]]: Steel Bank Common Lisp;  compilador de Common Lisp, instalável
@@ -67,6 +86,9 @@ algumas dependências, em especial da aplicação a ser desenvolvida.
   atual  e usa-a  neste projeto.  Assim, não  será necessário  incluir
   nosso /system/ no diretório ~local-projects~  do Roswell, por exemplo, e
   poderemos definir versões fixas das bibliotecas que utilizarmos.
+- [[https://github.com/fukamachi/mito][Mito]]: Trata-se do mesmo /system/ para conexão do banco de dados, porém
+  instalaremos  seu   utilitário  de   console  para   gerenciarmos  o
+  versionamento de migrações.
 
 *** Dependências opcionais
 
@@ -160,19 +182,19 @@ suas configurações do Emacs a função:
 #+end_src
 
 E então,  ao invés de executar  ~slime~ para iniciar a  imagem Lisp, use
-~slime-qlot-exec~.
+~slime-qlot-exec~, e então selecione o diretório raiz da aplicação.
 
-** Systems (bibliotecas)
+*** Configurando o mito
 
-Como /systems/ e bibliotecas de Common Lisp, usaremos:
+Mito também é uma aplicação  que será instalada globalmente através do
+Roswell. Para tanto, execute o seguinte comando:
 
-- [[https://github.com/joaotavora/snooze][Snooze]], para criação de aplicações REST;
-- [[https://quickref.common-lisp.net/clack.html][Clack]], servidor que trabalha sob o Snooze;
-- [[https://quickref.common-lisp.net/cl-json.html][cl-json]], para /parsing/ e serialização de informações em JSON;
-- [[https://github.com/fukamachi/mito][Mito]], para interação com o banco de dados;
-- [[https://github.com/sharplispers/ironclad][Ironclad]], para operações relacionadas a criptografia.
+#+begin_src bash :eval no :tangle no
+ros install mito
+#+end_src
 
-# TODO: Ver mito-auth para autenticação do usuário.
+Após a compilação do /system/ Mito, que será instalado globalmente, você
+poderá usar o script ~mito~ através da linha de comando.
 
 ** Utilitários extras
 
@@ -631,6 +653,150 @@ existência e migração automaticamente.
   (db-ensure-tables)
   (db-migrate-tables))
 #+end_src
+
+*** Executando as migrações pelo console
+
+Antes de  gerarmos as tabelas  de fato,  podemos executar o  ~mito~ pelo
+console  para que  este gere  arquivos  ~.sql~ das  migrações, com  seus
+respectivos timestamps.
+
+Esta opção é muito útil caso você queira garantir que seus 
+
+Para tanto:
+
+1. Navegue até a pasta raiz do projeto;
+2. Crie um  diretório chamado ~mito~. Usaremos  este diretório para
+   armazenar todos os arquivos ~.sql~ criados pelo ~mito~ no console.
+
+#+begin_src bash :eval no :tangle no
+cd /path/to/rest-server-example
+mkdir mito
+#+end_src
+
+Finalmente,  execute  o comando  a  seguir.  Veja  que ele  utiliza  a
+instalação  do  Quicklisp  pelo  Qlot para  criar  as  migrações  como
+necessário:
+
+#+begin_src bash :eval no :tangle no
+qlot exec mito generate-migrations -t postgres -u postgres -d cl-rest -p docker -P 5432 -s rest-server-example -D ./mito
+#+end_src
+
+Destrinchando este comando, temos os seguintes argumentos:
+
+- =-t postgres=: Anuncia que o tipo do  banco de dados a ser utilizado é
+  PostgreSQL;
+- =-u postgres=:  Anuncia o  nome do  usuário do  banco de  dados. Neste
+  caso, sendo ~postgres~;
+- =-d cl-rest=: Anuncia o nome do banco de dados (~cl-rest~);
+- =-p docker= Anuncia a senha de acesso do usuário;
+- =-P 5432=: Anuncia a porta na qual o banco de dados está operando;
+- =-D ./mito=: Anuncia o diretório onde as migrações serão armazenadas.
+
+Lembremos sempre que informações sensíveis (usuário e senha do banco
+de dados, por  exemplo) são melhor armazenados em um  local de difícil
+acesso para o público em geral.
+
+O argumento =-s rest-server-example= deixa  bem claro que vamos carregar
+o /system/ do  projeto atual (homônimo ao informado).  Dessa forma, ~mito~
+varre  todos  os  pacotes  do  sistema,  em  busca  de  definições  de
+tabelas. Ao encontrá-las, ele gera os arquivos SQL necessários para as
+mesmas.
+
+Por  conveniência, à  medida  que  o projeto  evoluir,  vou manter  as
+migrações geradas neste repositório, constatando as mudanças que foram
+efetuadas.
+
+Para avaliar o estado das migrações em questão, podemos usar novamente
+o ~mito~, desta vez sem necessidade do respaldo do Qlot:
+
+#+begin_src bash :tangle no :cache yes :exports both :results verbatim :eval no
+mito migration-status -t postgres -u postgres -d cl-rest -p docker -P 5432 -D ./mito
+#+end_src
+
+#+RESULTS[794b2433a8feb8a1e024e55a54c1bd83190f1140]:
+: 
+:  Status   Migration ID
+: --------------------------
+:   down    20200416161815
+
+Agora, podemos finalmente migrar o banco de dados:
+
+#+begin_src bash :tangle no :cache yes :exports both :results verbatim
+mito migrate -t postgres -u postgres -d cl-rest -p docker -P 5432 -D ./mito
+#+end_src
+
+#+RESULTS[9e53747730c5174881ffd71a0eacf860447b3fba]:
+#+begin_example
+
+Applying './mito/schema.sql'...
+-> CREATE TABLE "user" (
+    "id" BIGSERIAL NOT NULL PRIMARY KEY,
+    "name" VARCHAR(80) NOT NULL,
+    "birthdate" TIMESTAMPTZ NOT NULL,
+    "address" VARCHAR(255) NOT NULL,
+    "mail" VARCHAR(64) NOT NULL,
+    "pass" VARCHAR(64) NOT NULL,
+    "created_at" TIMESTAMPTZ,
+    "updated_at" TIMESTAMPTZ
+);
+-> CREATE UNIQUE INDEX "unique_user_mail" ON "user" ("mail");
+-> CREATE TABLE IF NOT EXISTS "schema_migrations" (
+    "version" VARCHAR(255) PRIMARY KEY,
+    "applied_at" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+Successfully updated to the version "20200416161815".
+#+end_example
+
+**** Scripts para migração
+
+Os comandos anteriores são longos, portanto vamos criar alguns scripts
+para  migração em  um diretório  chamado ~scripts~.  Crie-os na  raiz do
+projeto:
+
+#+begin_src bash :eval no :tangle no
+cd /path/to/rest-server-example
+mkdir scripts
+#+end_src
+
+Desta vez,  é interessante que  façamos scripts Bash para  executar os
+comandos.
+
+Lembremos mais  uma vez que  as informações sensíveis  utilizadas aqui
+deveriam  ser  armazenadas em  outro  lugar,  por segurança,  e  então
+utilizadas pelos scripts em si.
+
+~scripts/gen-migrations.sh~:
+
+#+begin_src bash :tangle scripts/gen-migrations.sh :eval no
+#!/bin/bash
+
+qlot exec mito generate-migrations -t postgres -u postgres -d cl-rest -p docker -P 5432 -s rest-server-example -D ./mito
+#+end_src
+
+~scripts/migration-status.sh~:
+
+#+begin_src bash :tangle scripts/migration-status.sh :eval no
+#!/bin/bash
+
+mito migration-status -t postgres -u postgres -d cl-rest -p docker -P 5432 -D ./mito
+#+end_src
+
+~scripts/migrate.sh~:
+
+#+begin_src bash :tangle scripts/migrate.sh :eval no
+#!/bin/bash
+
+mito migrate -t postgres -u postgres -d cl-rest -p docker -P 5432 -D ./mito
+#+end_src
+
+O último passo é permitir  que estes arquivos sejam executáveis. Basta
+alterar suas permissões com:
+
+#+begin_src bash :eval yes
+chmod +x scripts/*.sh
+#+end_src
+
+#+RESULTS:
 
 ** Seeds
 :PROPERTIES:
