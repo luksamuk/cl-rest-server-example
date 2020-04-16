@@ -13,7 +13,7 @@
            (http-condition 400 "Malformed JSON: ~a" ,payload-sym))))))
 
 (defun post-valid-user-p (user-data)
-  (let ((fields '(:name :address :mail :pass)))
+  (let ((fields '(:name :birthdate :address :mail :pass)))
     (loop for field in user-data
        always (and (consp field)
                    (stringp (cdr field))

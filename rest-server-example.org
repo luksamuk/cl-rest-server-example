@@ -21,16 +21,18 @@
   - [[#relação-de-rotas][Relação de rotas]]
   - [[#listagem-de-usuários][Listagem de usuários]]
   - [[#registrar-usuário][Registrar usuário]]
+- [[#banco-de-dados][Banco de dados]]
+  - [[#usando-postgresql-pelo-docker][Usando PostgreSQL pelo Docker]]
+  - [[#criando-um-banco-de-dados][Criando um banco de dados]]
+  - [[#conexão-com-o-banco-de-dados][Conexão com o banco de dados]]
+  - [[#migrações][Migrações]]
+  - [[#seeds][Seeds]]
+  - [[#modelos][Modelos]]
+  - [[#controladores][Controladores]]
 - [[#utilitários][Utilitários]]
   - [[#obtendo-elemento-de-uma-alist-ao-usar-macros][Obtendo elemento de uma alist ao usar macros]]
   - [[#validando-um-json-para-uma-rota][Validando um JSON para uma rota]]
   - [[#validando-uma-alist-de-usuário-para-registro][Validando uma alist de usuário para registro]]
-- [[#banco-de-dados][Banco de dados]]
-  - [[#usando-postgresql-pelo-docker][Usando PostgreSQL pelo Docker]]
-  - [[#criando-um-banco-de-dados][Criando um banco de dados]]
-  - [[#conexão][Conexão]]
-  - [[#modelos][Modelos]]
-  - [[#controladores][Controladores]]
 
 * Introdução
 
@@ -53,6 +55,8 @@ Como /systems/ e bibliotecas de Common Lisp, usaremos:
 - [[https://quickref.common-lisp.net/cl-json.html][cl-json]], para /parsing/ e serialização de informações em JSON;
 - [[https://github.com/fukamachi/mito][Mito]], para interação com o banco de dados;
 - [[https://github.com/sharplispers/ironclad][Ironclad]], para operações relacionadas a criptografia.
+
+# TODO: Ver mito-auth para autenticação do usuário.
 
 ** Utilitários extras
 
@@ -287,7 +291,13 @@ Esta definição trata dos métodos e rotas:
 A requisição ~POST~  em ~/users~ espera por um arquivo  JSON válido com os
 seguintes campos, para que um usuário seja registrado no sistema:
 
+# TODO: Trocar isto  para que seja automático. Talvez  criar um método
+# para  cada model  que  envolva obter  a lista  de  campos da  tabela
+# automaticamente. Talvez o mito faça isso pra gente.
+
 - ~"name"~ -- Nome do usuário;
+- ~"birthdate"~  --  Data  de  aniversário com  fuso  horário.  Exemplo:
+  ="1990-01-01 12:00:00-03"=;
 - ~"address"~ -- Endereço do usuário;
 - ~"mail"~ -- E-mail do usuário;
 - ~"pass"~ -- Senha do usuário registrado em texto plano.
@@ -321,47 +331,16 @@ Abaixo, definimos tais rotas.
                 (http-condition 400 "Malformed user data")))))))
 #+end_src
 
-* Utilitários
-:PROPERTIES:
-:header-args:lisp: :tangle src/util.lisp
-:END:
-
-#+begin_src lisp
-(in-package #:rest-server.util)
-#+end_src
-
-** Obtendo elemento de uma alist ao usar macros
-
-#+begin_src lisp
-(defmacro agetf (key alist)
-  `(cdr (assoc ,key ,alist)))
-#+end_src
-
-** Validando um JSON para uma rota
-
-#+begin_src lisp
-(defmacro route-validate-json (payload)
-  (let ((payload-sym (gensym)))
-    `(let ((,payload-sym ,payload))
-       (handler-case (json:decode-json-from-string
-                      ,payload-sym)
-         (error (e)
-           (declare (ignore e))
-           (http-condition 400 "Malformed JSON: ~a" ,payload-sym))))))
-#+end_src
-
-** Validando uma alist de usuário para registro
-
-#+begin_src lisp
-(defun post-valid-user-p (user-data)
-  (let ((fields '(:name :address :mail :pass)))
-    (loop for field in user-data
-       always (and (consp field)
-                   (stringp (cdr field))
-                   (and (member (car field) fields))))))
-#+end_src
-
 * Banco de dados
+
+Configuraremos  algumas   opções  relacionadas   ao  banco   de  dados
+agora. Começaremos gerando um contêiner local para acesso aos dados, e
+utilizaremos  Docker  para  gerenciá-lo;  em  seguida,  trataremos  da
+conexão, e então de modelos e controladores.
+
+As operações  relacionadas à  conexão e ao  gerenciamento do  banco de
+dados, uma vez criado, foi consultada na documentação do pacote ~mito~ e
+no [[https://lispcookbook.github.io/cl-cookbook/databases.html][The Common Lisp Cookbook]].
 
 ** Usando PostgreSQL pelo Docker
 
@@ -409,12 +388,15 @@ docker logs cl-rest  # Mostra os logs do contêiner
 
 ** Criando um banco de dados
 
-Recomendo utilizar o Postbird para criar um banco de dados. Conecte-se
-ao Postgres através dele, e crie uma database chamada =cl-rest=.
+Faremos, agora, a  operação manual de criar um banco  de dados no SGBD
+PostgreSQL. Para tanto, recomendo utilizar o Postbird.
 
-Agora, vamos configurar o =mito= para se conectar ao Postgres.
+Conecte-se  ao PostgreSQL  através do  Postbird, e  crie uma  /database/
+chamada =cl-rest=. As  tabelas e demais elementos  serão criados através
+de código, principalmente  usando o pacote ~mito~, uma  solução ORM para
+Common Lisp.
 
-** Conexão
+** Conexão com o banco de dados
 :PROPERTIES:
 :header-args:lisp: :tangle src/db.lisp
 :END:
@@ -423,44 +405,125 @@ Agora, vamos configurar o =mito= para se conectar ao Postgres.
 (in-package #:rest-server.db)
 #+end_src
 
+Vamos definir  algumas funções que conectam  o ~mito~ ao nosso  banco de
+dados recém-criado.
+
+*** Definições globais
+
+Vamos explicitar alguns dados de conexão com o PostgreSQL. Idealmente,
+armazenaríamos estas informações em outro lugar, para evitar problemas
+de segurança.
+
 #+begin_src lisp
-(defun db-connect ()
-  (mito:connect-toplevel :postgres
-                         :username "postgres"
-                         :database-name "cl-rest"
-                         :password "docker"))                         
+(defparameter *db-username* "postgres")
+(defparameter *db-dbname*   "cl-rest")
+(defparameter *db-pass*     "docker")
 #+end_src
 
-#+RESULTS:
-: DB-CONNECT
+*** Iniciando a conexão
+
+A função  a seguir pode ser  chamada para iniciar uma  conexão entre o
+~mito~ e  o PostgreSQL. Aqui, fornecemos  o usuário, o nome  do banco de
+dados e a senha do serviço.
+
+#+begin_src lisp
+(defun db-connect ()
+  (mito:connect-toplevel
+   :postgres
+   :username      *db-username*
+   :database-name *db-dbname*
+   :password      *db-pass*))
+#+end_src
+
+A   conexão   do   ~mito~   é   globalmente   acessível   no   parâmetro
+~mito:*connection*~.
+
+*** Encerrando a conexão
+
+A função a seguir invoca diretamente o ~mito~ para que encerre a conexão
+com o banco de dados, caso esteja ativa.
 
 #+begin_src lisp
 (defun db-disconnect ()
   (mito:disconnect-toplevel))
 #+end_src
 
-#+RESULTS:
-: DB-DISCONNECT
+** Migrações
+:PROPERTIES:
+:header-args:lisp: :tangle src/db.lisp
+:END:
 
-*** Garantindo existência das tabelas
+# TODO:  Versionamento  de migrações  é  feito  através da  ferramenta
+# "mito",  instalável  via Roswell.  Vai  demandar  um pouco  mais  de
+# estudo.
+
+Realizar    migrações    com    o    ~mito~    é    algo    extremamente
+simples.  Primeiramente, definiremos  uma  lista de  todas as  tabelas
+existentes, cada qual  correspondente a um /model/ que  também faz parte
+do pacote atual, mas é definida em seu respectivo arquivo.
 
 #+begin_src lisp
-(defparameter *orm-tables*
-  '(user))
+(defparameter *db-tables* '(user))
 #+end_src
 
-#+RESULTS:
-: *ORM-TABLES*
+A função  a seguir  mapeia a  função ~mito:ensure-table-exists~  sobre a
+lista de tabelas esperada, garantindo que todas as tabelas existam.
+
+#+begin_src lisp
+(defun db-ensure-tables ()
+  (mapcar #'mito:ensure-table-exists *db-tables*))
+#+end_src
+
+Já a função a seguir realiza as /migrações/ propriamente ditas, mapeando
+~mito:migrate-table~ sobre todas as tabelas da lista. Assim, caso alguma
+definição das classes  no ORM tenha sido alterada,  ~mito~ realizará uma
+operação de ~ALTER TABLE~ necessária.
 
 #+begin_src lisp
 (defun db-migrate-tables ()
-  (mapcar #'mito:ensure-table-exists *orm-tables*))
+  (mapcar #'mito:migrate-table *db-tables*))
 #+end_src
 
-#+RESULTS:
-: DB-MIGRATE-TABLES
+Você poderá verificar  o código SQL a ser executado  antes da migração
+através da função ~mito:migration-expressions~,  seguido do símbolo para
+a tabela criada.  A função auxiliar a seguir mapeia  esta função sobre
+todas as  tabelas e  coleta os códigos  de migração  pretendidos, para
+cada tabela que necessita de migração.
 
-*** Semeando a base de dados
+#+begin_src lisp
+(defun db-migration-expressions ()
+  (loop for table in *db-tables*
+     for expr = (mito:migration-expressions table)
+     when expr
+     collect (list table expr)))
+#+end_src
+
+A função auxiliar  a seguir toma as expressões SQL  necessárias para a
+definição das tabelas 
+
+#+begin_src lisp
+(defun db-table-definitions ()
+  (loop for table in *db-tables*
+     for expr = (mito:table-definition table)
+     collect (list table expr)))
+#+end_src
+
+Finalmente, a função a seguir apenas executa as funções de garantia de
+existência e migração automaticamente.
+
+#+begin_src lisp
+(defun db-gen-tables ()
+  (db-ensure-tables)
+  (db-migrate-tables))
+#+end_src
+
+** Seeds
+:PROPERTIES:
+:header-args:lisp: :tangle src/db.lisp
+:END:
+
+A  função a  seguir popula  o banco  de dados  com alguns  exemplos de
+dados. Atualmente, apenas dois usuários são inseridos.
 
 #+begin_src lisp
 (defun db-seed ()
@@ -470,23 +533,29 @@ Agora, vamos configurar o =mito= para se conectar ao Postgres.
                     (make-instance
                      'user
                      :name (util:agetf :name user)
+                     :birthdate (util:agetf :birthdate user)
                      :address (util:agetf :address user)
                      :mail (util:agetf :mail user)
                      :pass (util:agetf :pass user))))))
-    (seed-users '(((:name    . "Fulano da Silva")
-                   (:address . "Rua dos Bobos, 0")
-                   (:mail    . "fulano@exemplo.com")
-                   (:pass    . "123456"))
-                  ((:name    . "Ciclano da Silva")
-                   (:address . "Rua dos Bobos, 1")
-                   (:mail    . "ciclano@exemplo.com")
-                   (:pass    . "123456"))))))
+    (seed-users '(((:name      . "Fulano da Silva")
+                   (:birthdate . "1990-01-01 12:00:00-03")
+                   (:address   . "Rua dos Bobos, 0")
+                   (:mail      . "fulano@exemplo.com")
+                   (:pass      . "123456"))
+                  ((:name      . "Ciclano da Silva")
+                   (:birthdate . "1990-01-01 12:00:00-03")
+                   (:address   . "Rua dos Bobos, 1")
+                   (:mail      . "ciclano@exemplo.com")
+                   (:pass      . "123456"))))))
 #+end_src
 
-#+RESULTS:
-: DB-SEED
-
 ** Modelos
+
+As  próximas  definições  tratam  de /modelos/  da  aplicação,  que  são
+correspondentes também  a tabelas da  mesma. Portanto, cada  um destes
+modelos encontra-se em um arquivo próprio.
+
+# TODO: Especificar métodos gerais dos modelos
 
 *** Usuário
 :PROPERTIES:
@@ -495,11 +564,32 @@ Agora, vamos configurar o =mito= para se conectar ao Postgres.
 
 #+begin_src lisp
 (in-package #:rest-server.db)
+#+end_src
 
+Aqui definimos  os campos para  um usuário  do sistema.  Os  campos da
+tabela do usuário estão listados a seguir:
+
+|------------+-------------+----------------------------|
+| Nome       | Tipo        | Observações                |
+|------------+-------------+----------------------------|
+| id         | BIGSERIAL   | Automático, chave primária |
+| name       | VARCHAR 80  |                            |
+| birthdate  | TIMESTAMPTZ |                            |
+| address    | VARCHAR 255 |                            |
+| mail       | VARCHAR 64  | Índice único               |
+| pass       | VARCHAR 64  |                            |
+| created_at | TIMESTAMPTZ | Automático                 |
+| updated_at | TIMESTAMPTZ | Automático                 |
+|------------+-------------+----------------------------|
+
+#+begin_src lisp
 (defclass user ()
   ((name :col-type (:varchar 80)
          :initarg :name
          :accessor user-name)
+   (birthdate :col-type :timestamptz
+              :initarg :birthdate
+              :accessor user-birthdate)
    (address :col-type (:varchar 255)
             :initarg :address
             :accessor user-address)
@@ -513,28 +603,25 @@ Agora, vamos configurar o =mito= para se conectar ao Postgres.
   (:unique-keys mail))
 #+end_src
 
-#+RESULTS:
-: #<DAO-TABLE-CLASS REST-SERVER.DB::USER>
+**** Auxiliares
+
+# TODO: Especificar a  existência deste método em  outro lugar. Talvez
+# passar para o controller???
 
 #+begin_src lisp
 (defmethod into-alist ((user user))
   `((:id      . ,(mito:object-id user))
     (:name    . ,(user-name user))
+    (:birthdate . ,(user-birthdate user))
     (:address . ,(user-address user))
     (:mail    . ,(user-mail user))
     (:pass    . ,(user-pass user))))
 #+end_src
 
-#+RESULTS:
-: #<STANDARD-METHOD REST-SERVER.DB:INTO-ALIST (USER) {1001D67FA3}>
-
 #+begin_src lisp
 (defmethod into-json ((user user))
   (json:encode-json-to-string (into-alist user)))
 #+end_src
-
-#+RESULTS:
-: #<STANDARD-METHOD REST-SERVER.DB:INTO-JSON (USER) {10016B7903}>
 
 #+begin_src lisp
 (defmethod from-alist ((type (eql :user)) alist)
@@ -542,14 +629,77 @@ Agora, vamos configurar o =mito= para se conectar ao Postgres.
                `(util:agetf ,field alist)))
     (make-instance 'user
                    :name (get-field :name)
+                   :birthdate (get-field :birthdate)
                    :address (get-field :address)
                    :mail (get-field :mail)
                    :pass (get-field :pass))))
 #+end_src
 
-#+RESULTS:
-: #<STANDARD-METHOD REST-SERVER.DB:FROM-ALIST ((EQL :USER) T) {1006843C13}>
-
 ** Controladores
 
 A fazer.
+
+* Utilitários
+:PROPERTIES:
+:header-args:lisp: :tangle src/util.lisp
+:END:
+
+#+begin_src lisp
+(in-package #:rest-server.util)
+#+end_src
+
+As funções e macros a seguir  são gerais para a aplicação, podendo ser
+utilizados em qualquer lugar. Geralmente são aqui deixados para evitar
+poluição no código.
+
+** Obtendo elemento de uma alist ao usar macros
+
+Este macro  tenta obter  o valor  associado a uma  certa chave  em uma
+lista  de  atributos  (alist),  caso  exista.  Se  não  existir,  será
+retornado ~NIL~.
+
+Este macro  presume que a alist  seja composta de pares  criados com a
+função ~CONS~, onde o ~CDR~ não seja uma lista.
+
+#+begin_src lisp
+(defmacro agetf (key alist)
+  `(cdr (assoc ,key ,alist)))
+#+end_src
+
+** Validando um JSON para uma rota
+
+Este macro  toma um certo /payload/  de uma rota qualquer  e verifica se
+ele é válido. Caso não seja, é automaticamente ativada uma condição do
+protocolo HTTP como  resposta, sob um erro 400 e  uma mensagem de JSON
+mal-formado.
+
+#+begin_src lisp
+(defmacro route-validate-json (payload)
+  (let ((payload-sym (gensym)))
+    `(let ((,payload-sym ,payload))
+       (handler-case (json:decode-json-from-string
+                      ,payload-sym)
+         (error (e)
+           (declare (ignore e))
+           (http-condition 400 "Malformed JSON: ~a" ,payload-sym))))))
+#+end_src
+
+** Validando uma alist de usuário para registro
+
+# TODO: Generalizar!!!!!
+# TODO: Este formato é  realmente necessário? Não deveríamos converter
+# diretamente de uma entidade do mito para JSON e vice-versa?
+
+Esta função  toma uma alist  de dados de  um usuário, pronto  para ser
+criado no  banco de dados, e  entao verifica se todos  estes dados são
+/strings/, como esperado.
+
+#+begin_src lisp
+(defun post-valid-user-p (user-data)
+  (let ((fields '(:name :birthdate :address :mail :pass)))
+    (loop for field in user-data
+       always (and (consp field)
+                   (stringp (cdr field))
+                   (and (member (car field) fields))))))
+#+end_src
+
