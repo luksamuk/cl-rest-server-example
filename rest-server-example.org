@@ -432,12 +432,12 @@ seguintes campos, para que um usuário seja registrado no sistema:
 # para  cada model  que  envolva obter  a lista  de  campos da  tabela
 # automaticamente. Talvez o mito faça isso pra gente.
 
-- ~"name"~ -- Nome do usuário;
-- ~"birthdate"~  --  Data  de  aniversário com  fuso  horário.  Exemplo:
+- ~name~ -- Nome do usuário;
+- ~birthdate~  --  Data  de  aniversário com  fuso  horário.  Exemplo:
   ="1990-01-01 12:00:00-03"=;
-- ~"address"~ -- Endereço do usuário;
-- ~"mail"~ -- E-mail do usuário;
-- ~"pass"~ -- Senha do usuário registrado em texto plano.
+- ~address~ -- Endereço do usuário;
+- ~mail~ -- E-mail do usuário;
+- ~pass~ -- Senha do usuário registrado em texto plano.
 
 Caso  os  dados  sejam  válidos  e o  usuário  seja  registrado,  será
 retornado um JSON:
