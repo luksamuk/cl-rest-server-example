@@ -6,15 +6,22 @@
 #+PROPERTY:  header-args:lisp :noweb strip-export :eval no :tangle no
 #+OPTIONS:   toc:nil title:nil
 
-* Sumário :TOC:
+* Sumário :TOC_3:
 - [[#introdução][Introdução]]
 - [[#dependências][Dependências]]
   - [[#sistemas][Sistemas]]
   - [[#programas][Programas]]
+    - [[#dependências-opcionais][Dependências opcionais]]
+    - [[#configurando-o-roswell][Configurando o Roswell]]
+    - [[#configurando-o-qlot][Configurando o Qlot]]
+    - [[#configurando-o-mito][Configurando o mito]]
   - [[#utilitários-extras][Utilitários extras]]
 - [[#definindo-o-projeto][Definindo o Projeto]]
   - [[#definição-do-system][Definição do System]]
   - [[#definição-dos-pacotes][Definição dos pacotes]]
+    - [[#definição-do-pacote-de-utilitários][Definição do pacote de utilitários]]
+    - [[#definição-do-pacote-de-banco-de-dados][Definição do pacote de banco de dados]]
+    - [[#definição-do-pacote-principal][Definição do pacote principal]]
 - [[#inicialização-do-servidor][Inicialização do servidor]]
   - [[#dados-globais-do-servidor][Dados globais do servidor]]
   - [[#iniciando-o-servidor][Iniciando o servidor]]
@@ -27,9 +34,15 @@
   - [[#usando-postgresql-pelo-docker][Usando PostgreSQL pelo Docker]]
   - [[#criando-um-banco-de-dados][Criando um banco de dados]]
   - [[#conexão-com-o-banco-de-dados][Conexão com o banco de dados]]
+    - [[#definições-globais][Definições globais]]
+    - [[#iniciando-a-conexão][Iniciando a conexão]]
+    - [[#encerrando-a-conexão][Encerrando a conexão]]
   - [[#migrações][Migrações]]
+    - [[#executando-as-migrações-em-código][Executando as migrações em código]]
+    - [[#executando-as-migrações-pelo-console][Executando as migrações pelo console]]
   - [[#seeds][Seeds]]
   - [[#modelos][Modelos]]
+    - [[#usuário][Usuário]]
   - [[#controladores][Controladores]]
 - [[#utilitários][Utilitários]]
   - [[#obtendo-elemento-de-uma-alist-ao-usar-macros][Obtendo elemento de uma alist ao usar macros]]
@@ -37,6 +50,11 @@
   - [[#convertendo-símbolos-para-keywords][Convertendo símbolos para keywords]]
   - [[#detectando-se-uma-classe-é-realmente-uma-tabela][Detectando se uma classe é realmente uma tabela]]
   - [[#extraindo-lista-de-slots-de-uma-tabela][Extraindo lista de slots de uma tabela]]
+    - [[#colunas-cruas][Colunas cruas]]
+    - [[#colunas-lispadas][Colunas "lispadas"]]
+    - [[#colunas-lispadas-para-registro][Colunas "lispadas" para registro]]
+    - [[#colunas-stringificadas][Colunas "stringificadas"]]
+    - [[#colunas-stringificadas-para-registro][Colunas "stringificadas" para registro]]
   - [[#validando-uma-alist-de-registro][Validando uma alist de registro]]
 
 * Introdução
@@ -69,8 +87,8 @@ Para criar nosso servidor REST, carregaremos os seguintes /systems/:
 - [[https://quickref.common-lisp.net/cl-json.html][cl-json]], para /parsing/ e serialização de informações em JSON;
 - [[https://github.com/fukamachi/mito][Mito]], para interação com o banco de dados;
 - [[https://github.com/sharplispers/ironclad][Ironclad]], para operações relacionadas a criptografia;
-- closer-mop, para manipulação extra no protocolo de metaobjetos;
-- Alexandria, para utilitários variados  relacionados a diversos tipos
+- [[https://github.com/pcostanza/closer-mop][closer-mop]], para manipulação extra no protocolo de metaobjetos;
+- [[https://common-lisp.net/project/alexandria/][Alexandria]], para utilitários variados  relacionados a diversos tipos
   de operações.
 
 # TODO: Ver fukamachi/mito-attachment para  gerenciar arquivos fora do
@@ -449,7 +467,7 @@ seguintes campos, para que um usuário seja registrado no sistema:
 
 - ~name~ -- Nome do usuário;
 - ~birthdate~  --  Data  de  aniversário com  fuso  horário.  Exemplo:
-  ="1990-01-01 12:00:00-03"=;
+  =1990-01-01 12:00:00-03=;
 - ~address~ -- Endereço do usuário;
 - ~mail~ -- E-mail do usuário;
 - ~pass~ -- Senha do usuário registrado em texto plano.
