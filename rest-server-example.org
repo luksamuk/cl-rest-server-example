@@ -3,7 +3,7 @@
 #+AUTHOR:    Lucas S. Vieira
 #+EMAIL:     lucasvieira@protonmail.com
 #+STARTUP:   inlineimages content latexpreview
-#+PROPERTY:  header-args:lisp :noweb strip-export :eval no :tangle no
+#+PROPERTY:  header-args:lisp :noweb strip-export :eval no :tangle no :results silent
 #+OPTIONS:   toc:nil title:nil
 
 * Sumário :TOC_3:
@@ -56,6 +56,11 @@
     - [[#colunas-stringificadas][Colunas "stringificadas"]]
     - [[#colunas-stringificadas-para-registro][Colunas "stringificadas" para registro]]
   - [[#validando-uma-alist-de-registro][Validando uma alist de registro]]
+  - [[#obtendo-campos-de-um-dao][Obtendo campos de um DAO]]
+  - [[#censurando-informações-sensíveis-em-uma-alist][Censurando informações sensíveis em uma alist]]
+  - [[#campos-censurados-em-um-dao][Campos censurados em um DAO]]
+  - [[#obtendo-campos-filtrados-de-um-dao][Obtendo campos filtrados de um DAO]]
+  - [[#obtendo-json-de-um-dao-do-banco-de-dados][Obtendo JSON de um DAO do banco de dados]]
 
 * Introdução
 
@@ -308,7 +313,11 @@ podem ser usados globalmente.
            #:table-get-lispy-register-columns
            #:table-get-string-columns
            #:table-get-string-register-columns
-           #:post-valid-data-p))
+           #:post-valid-data-p
+           #:dao->alist
+           #:filter-alist
+           #:dao->filtered-alist
+           #:dao->json))
 #+end_src
 
 *** Definição do pacote de banco de dados
@@ -446,11 +455,12 @@ usuário, respectivamente.
 (defroute users (:get "application/json" &optional (id 'all))
   (if (eq id 'all)
       (json:encode-json-to-string
-       (mapcar #'db:into-alist (mito:select-dao 'db:user)))
+       (mapcar #'util:dao->filtered-alist
+               (mito:select-dao 'db:user)))
       (let ((the-user (mito:find-dao 'db:user :id id)))
         (if (null the-user)
             (http-condition 404 "Unknown user ID")
-            (db:into-json the-user)))))
+            (util:dao->json the-user)))))
 #+end_src
 
 ** Registrar usuário
@@ -475,6 +485,16 @@ seguintes campos, para que um usuário seja registrado no sistema:
 Estes campos são automaticamente deduzidos a partir da classe =db:user=,
 que representa  a tabela =user=, e  portanto podem mudar sem  prejuízo à
 verificação da rota.
+
+Podemos verificar de  tempos em tempos os campos de  registro para uma
+certa tabela desta forma, por exemplo:
+
+#+begin_src lisp :tangle no :cache yes :exports both :results verbatim
+(util:table-get-lispy-register-columns 'db:user)
+#+end_src
+
+#+RESULTS[453a8ccbfe64e893ccf911e124b6e967d4ae5ae8]:
+: (:NAME :BIRTHDATE :ADDRESS :MAIL :PASS)
 
 Caso  os  dados  sejam  válidos  e o  usuário  seja  registrado,  será
 retornado um JSON:
@@ -532,24 +552,15 @@ docker run --name cl-rest -e POSTGRES_PASSWORD=docker -p 5432:5432 -d postgres:1
 Uma dica  útil é que podemos  ver quais contêineres estão  em execução
 usando o comando:
 
-#+begin_src bash
+#+begin_src bash :eval no
 docker ps
 #+end_src
 
-#+RESULTS:
-| CONTAINER    | ID          | IMAGE                | COMMAND | CREATED | STATUS | PORTS | NAMES |       |   |        |                        |         |
-| d6cdbe8e7697 | postgres:11 | docker-entrypoint.s… | About   | a       | minute | ago   | Up    | About | a | minute | 0.0.0.0:5432->5432/tcp | cl-rest |
-
 ...ou ver todos os contêineres da máquina com:
 
-#+begin_src bash
+#+begin_src bash :eval no
 docker ps -a
 #+end_src
-
-#+RESULTS:
-| CONTAINER    | ID          | IMAGE                | COMMAND | CREATED | STATUS | PORTS  | NAMES |       |       |        |                        |         |
-| d6cdbe8e7697 | postgres:11 | docker-entrypoint.s… | About   | a       | minute | ago    | Up    | About | a     | minute | 0.0.0.0:5432->5432/tcp | cl-rest |
-| b27dfc60f958 | postgres:11 | docker-entrypoint.s… | 5       | weeks   | ago    | Exited | (0)   |     4 | weeks | ago    | database               |         |
 
 Podemos  também  utilizar  os  comandos  a  seguir  para  controlar  o
 contêiner.
@@ -883,12 +894,27 @@ dados. Atualmente, apenas dois usuários são inseridos.
 #+end_src
 
 ** Modelos
+:PROPERTIES:
+:header-args:lisp: :tangle src/db.lisp
+:END:
 
 As  próximas  definições  tratam  de /modelos/  da  aplicação,  que  são
 correspondentes também  a tabelas da  mesma. Portanto, cada  um destes
 modelos encontra-se em um arquivo próprio.
 
-# TODO: Especificar métodos gerais dos modelos
+Primeiramente, definiremos algumas  operações genéricas que entendemos
+que quaisquer modelos necessitem definir.
+
+Um  método ~from-alist~  toma uma  certa chave  de objeto  (por exemplo,
+~:user~) e  uma alist  contendo dados  variados para  que o  objeto seja
+criado. Este método  fica responsável por selecionar  *apenas as chaves
+pertinentes*, ou seja, a alist poderia ter mais dados do que 
+necessário,  mas   o  processo   de  criação   do  objeto   não  seria
+prejudicado. Portanto, é necessário defini-lo manualmente por tabela.
+
+#+begin_src lisp
+(defgeneric from-alist (type-key alist))
+#+end_src
 
 *** Usuário
 :PROPERTIES:
@@ -916,7 +942,7 @@ tabela do usuário estão listados a seguir:
 |------------+-------------+----------------------------|
 
 #+begin_src lisp
-(defclass user ()
+(deftable user ()
   ((name :col-type (:varchar 80)
          :initarg :name
          :accessor user-name)
@@ -932,40 +958,28 @@ tabela do usuário estão listados a seguir:
    (pass :col-type (:varchar 64)
          :initarg :pass
          :accessor user-pass))
-  (:metaclass mito:dao-table-class)
   (:unique-keys mail))
 #+end_src
 
-**** Auxiliares
+É interessante  lembrar que  uma tabela  do ~mito~ nada  mais é  que uma
+classe, cujo campo ~:metaclass~ equivale a ~mito:dao-table-class~.
 
-# TODO: Especificar a  existência deste método em  outro lugar. Talvez
-# passar para o controller???
+**** Métodos
 
-#+begin_src lisp
-(defmethod into-alist ((user user))
-  `((:id      . ,(mito:object-id user))
-    (:name    . ,(user-name user))
-    (:birthdate . ,(user-birthdate user))
-    (:address . ,(user-address user))
-    (:mail    . ,(user-mail user))
-    (:pass    . ,(user-pass user))))
-#+end_src
-
-#+begin_src lisp
-(defmethod into-json ((user user))
-  (json:encode-json-to-string (into-alist user)))
-#+end_src
+Definimos  o método  para construção  de um  usuário a  partir de  uma
+~alist~.
 
 #+begin_src lisp
 (defmethod from-alist ((type (eql :user)) alist)
   (macrolet ((get-field (field)
                `(util:agetf ,field alist)))
-    (make-instance 'user
-                   :name (get-field :name)
-                   :birthdate (get-field :birthdate)
-                   :address (get-field :address)
-                   :mail (get-field :mail)
-                   :pass (get-field :pass))))
+    (mito:make-dao-instance
+     'user
+     :name (get-field :name)
+     :birthdate (get-field :birthdate)
+     :address (get-field :address)
+     :mail (get-field :mail)
+     :pass (get-field :pass))))
 #+end_src
 
 ** Controladores
@@ -1163,7 +1177,77 @@ igualmente informada.
                    (member (car field) fields)))))
 #+end_src
 
-#+RESULTS:
-: POST-VALID-DATA-P
+** Obtendo campos de um DAO
 
+A função  a seguir  toma um  objeto instanciado a  partir de  dados do
+banco de dados,  verifica sua classe correspondente, e  cria uma /alist/
+com dados  correspondentes a  suas colunas. Note  que esta  função não
+filtra informações potencialmente sensíveis.
+
+#+begin_src lisp
+(defun dao->alist (dao)
+  (let ((class (type-of dao)))
+    (loop for field in (util:table-get-lispy-columns class)
+       for getter-sym = (case field
+                          (:id 'mito:object-id)
+                          (:created-at 'mito:object-created-at)
+                          (:updated-at 'mito:object-updated-at)
+                          (otherwise
+                           (intern (string-upcase
+                                    (concatenate 'string
+                                                 (format nil "~a" class)
+                                                 "-"
+                                                 (format nil "~a" field)))
+                                   :rest-server.db)))
+       collect (cons field (funcall getter-sym dao)))))
+#+end_src
+
+** Censurando informações sensíveis em uma alist
+
+A  função a  seguir  /filtra/ campos  de uma  alist  que possuam  chaves
+censuradas.  Para  tanto, basta  fornecer  a  alist  e uma  lista  com
+keywords censuradas.
+
+#+begin_src lisp
+(defun filter-alist (alist censored-keys)
+  (loop for element in alist
+     unless (member (car element) censored-keys :test #'equal)
+     collect element))
+#+end_src
+
+** Campos censurados em um DAO
+
+Este parâmetro  define campos que normalmente  não seriam apresentados
+ao usuário, quando obtidos através de uma rota.
+
+#+begin_src lisp
+(defparameter *censored-dao-fields*
+  '(:id :created-at :updated-at :pass))
+#+end_src
+
+** Obtendo campos filtrados de um DAO
+
+Esta função apresenta resultados  similares a ~dao->alist~. Todavia, ela
+/filtra/ e remove  todos os campos que  sejam informações potencialmente
+sensíveis.
+
+#+begin_src lisp
+(defun dao->filtered-alist (dao)
+  (filter-alist (dao->alist dao)
+                ,*censored-dao-fields*))
+
+#+end_src
+
+** Obtendo JSON de um DAO do banco de dados
+
+Esta função  toma um  objeto populado  com dados do  banco de  dados e
+transforma-o em  uma string  JSON. Como  JSON é  um formato  apenas de
+comunicação para com  esta aplicação, o JSON  gerado é automaticamente
+filtrado para que não contenha informações sensíveis.
+
+#+begin_src lisp
+(defun dao->json (dao)
+  (json:encode-json-to-string
+   (dao->filtered-alist dao)))
+#+end_src
 

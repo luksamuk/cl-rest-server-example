@@ -58,3 +58,5 @@
                    (:address   . "Rua dos Bobos, 1")
                    (:mail      . "ciclano@exemplo.com")
                    (:pass      . "123456"))))))
+
+(defgeneric from-alist (type-key alist))

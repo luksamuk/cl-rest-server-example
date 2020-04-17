@@ -9,7 +9,11 @@
            #:table-get-lispy-register-columns
            #:table-get-string-columns
            #:table-get-string-register-columns
-           #:post-valid-data-p))
+           #:post-valid-data-p
+           #:dao->alist
+           #:filter-alist
+           #:dao->filtered-alist
+           #:dao->json))
 
 (defpackage #:rest-server.db
   (:nicknames #:db)

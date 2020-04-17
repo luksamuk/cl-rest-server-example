@@ -67,3 +67,35 @@
        always (and (consp field)
                    (stringp (cdr field))
                    (member (car field) fields)))))
+
+(defun dao->alist (dao)
+  (let ((class (type-of dao)))
+    (loop for field in (util:table-get-lispy-columns class)
+       for getter-sym = (case field
+                          (:id 'mito:object-id)
+                          (:created-at 'mito:object-created-at)
+                          (:updated-at 'mito:object-updated-at)
+                          (otherwise
+                           (intern (string-upcase
+                                    (concatenate 'string
+                                                 (format nil "~a" class)
+                                                 "-"
+                                                 (format nil "~a" field)))
+                                   :rest-server.db)))
+       collect (cons field (funcall getter-sym dao)))))
+
+(defun filter-alist (alist censored-keys)
+  (loop for element in alist
+     unless (member (car element) censored-keys :test #'equal)
+     collect element))
+
+(defparameter *censored-dao-fields*
+  '(:id :created-at :updated-at :pass))
+
+(defun dao->filtered-alist (dao)
+  (filter-alist (dao->alist dao)
+                *censored-dao-fields*))
+
+(defun dao->json (dao)
+  (json:encode-json-to-string
+   (dao->filtered-alist dao)))
