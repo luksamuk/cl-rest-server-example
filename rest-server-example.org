@@ -34,7 +34,10 @@
 - [[#utilitários][Utilitários]]
   - [[#obtendo-elemento-de-uma-alist-ao-usar-macros][Obtendo elemento de uma alist ao usar macros]]
   - [[#validando-um-json-para-uma-rota][Validando um JSON para uma rota]]
-  - [[#validando-uma-alist-de-usuário-para-registro][Validando uma alist de usuário para registro]]
+  - [[#convertendo-símbolos-para-keywords][Convertendo símbolos para keywords]]
+  - [[#detectando-se-uma-classe-é-realmente-uma-tabela][Detectando se uma classe é realmente uma tabela]]
+  - [[#extraindo-lista-de-slots-de-uma-tabela][Extraindo lista de slots de uma tabela]]
+  - [[#validando-uma-alist-de-registro][Validando uma alist de registro]]
 
 * Introdução
 
@@ -65,9 +68,15 @@ Para criar nosso servidor REST, carregaremos os seguintes /systems/:
 - [[https://quickref.common-lisp.net/clack.html][Clack]], servidor que trabalha sob o Snooze;
 - [[https://quickref.common-lisp.net/cl-json.html][cl-json]], para /parsing/ e serialização de informações em JSON;
 - [[https://github.com/fukamachi/mito][Mito]], para interação com o banco de dados;
-- [[https://github.com/sharplispers/ironclad][Ironclad]], para operações relacionadas a criptografia.
+- [[https://github.com/sharplispers/ironclad][Ironclad]], para operações relacionadas a criptografia;
+- closer-mop, para manipulação extra no protocolo de metaobjetos;
+- Alexandria, para utilitários variados  relacionados a diversos tipos
+  de operações.
 
-# TODO: Ver mito-auth para autenticação do usuário.
+# TODO: Ver fukamachi/mito-attachment para  gerenciar arquivos fora do
+# SGBD.
+# TODO:  Ver fukamachi/mito-auth  para  autenticação  do usuário.  Usa
+# associação automática com Ironclad.
 
 ** Programas
 
@@ -143,11 +152,13 @@ Em seguida,  na raiz do projeto,  criamos um arquivo com  o exato nome
 utilizar, da forma como se vê a seguir:
 
 #+begin_src fundamental :tangle qlfile
-ql cl-json  2020-03-25
-ql snooze   2020-03-25
-ql clack    2020-03-25
-ql mito     2020-03-25
-ql ironclad 2020-03-25
+ql cl-json    2020-03-25
+ql snooze     2020-03-25
+ql clack      2020-03-25
+ql mito       2020-03-25
+ql ironclad   2020-03-25
+ql closer-mop 2020-03-25
+ql alexandria 2020-03-25
 #+end_src
 
 Nosso último  passo é executar  o ~qlot~  no console para  que Quicklisp
@@ -239,7 +250,9 @@ que define.
                  #:snooze
                  #:clack
                  #:mito
-                 #:ironclad)
+                 #:ironclad
+                 #:closer-mop
+                 #:alexandria)
     :components
     ((:file "package")
      (:module "src"
@@ -271,7 +284,13 @@ podem ser usados globalmente.
   (:use #:cl)
   (:export #:agetf
            #:route-validate-json
-           #:post-valid-user-p))
+           #:symbol->keyword
+           #:class-table-p
+           #:table-get-lispy-columns
+           #:table-get-lispy-register-columns
+           #:table-get-string-columns
+           #:table-get-string-register-columns
+           #:post-valid-data-p))
 #+end_src
 
 *** Definição do pacote de banco de dados
@@ -428,16 +447,16 @@ Esta definição trata dos métodos e rotas:
 A requisição ~POST~  em ~/users~ espera por um arquivo  JSON válido com os
 seguintes campos, para que um usuário seja registrado no sistema:
 
-# TODO: Trocar isto  para que seja automático. Talvez  criar um método
-# para  cada model  que  envolva obter  a lista  de  campos da  tabela
-# automaticamente. Talvez o mito faça isso pra gente.
-
 - ~name~ -- Nome do usuário;
 - ~birthdate~  --  Data  de  aniversário com  fuso  horário.  Exemplo:
   ="1990-01-01 12:00:00-03"=;
 - ~address~ -- Endereço do usuário;
 - ~mail~ -- E-mail do usuário;
 - ~pass~ -- Senha do usuário registrado em texto plano.
+
+Estes campos são automaticamente deduzidos a partir da classe =db:user=,
+que representa  a tabela =user=, e  portanto podem mudar sem  prejuízo à
+verificação da rota.
 
 Caso  os  dados  sejam  válidos  e o  usuário  seja  registrado,  será
 retornado um JSON:
@@ -457,10 +476,10 @@ Abaixo, definimos tais rotas.
   (if id
       (http-condition 403 "Route does not accept POST.")
       (let ((object (util:route-validate-json (payload-as-string))))
-        (if (not (util:post-valid-user-p object))
+        (if (not (util:post-valid-data-p 'db:user object))
             (http-condition 400 "Malformed user data")
             (handler-case (let ((user (db:from-alist :user object)))
-                            (mito:insert-dao user) ; todo: verify
+                            (mito:insert-dao user) ; todo: handle
                             (json:encode-json-to-string
                              '((message . "Ok"))))
               (error (e)
@@ -590,12 +609,16 @@ com o banco de dados, caso esteja ativa.
 :header-args:lisp: :tangle src/db.lisp
 :END:
 
-# TODO:  Versionamento  de migrações  é  feito  através da  ferramenta
-# "mito",  instalável  via Roswell.  Vai  demandar  um pouco  mais  de
-# estudo.
-
 Realizar    migrações    com    o    ~mito~    é    algo    extremamente
-simples.  Primeiramente, definiremos  uma  lista de  todas as  tabelas
+simples.
+
+Programaremos  uma solução  para  migrações via  código  direto, e  em
+seguida, configuraremos o projeto para  que estas migrações possam ser
+feitas através do console.
+
+*** Executando as migrações em código
+
+Primeiramente, definiremos  uma  lista de  todas as  tabelas
 existentes, cada qual  correspondente a um /model/ que  também faz parte
 do pacote atual, mas é definida em seu respectivo arquivo.
 
@@ -976,22 +999,153 @@ mal-formado.
            (http-condition 400 "Malformed JSON: ~a" ,payload-sym))))))
 #+end_src
 
-** Validando uma alist de usuário para registro
+** Convertendo símbolos para keywords
 
-# TODO: Generalizar!!!!!
-# TODO: Este formato é  realmente necessário? Não deveríamos converter
-# diretamente de uma entidade do mito para JSON e vice-versa?
-
-Esta função  toma uma alist  de dados de  um usuário, pronto  para ser
-criado no  banco de dados, e  entao verifica se todos  estes dados são
-/strings/, como esperado.
+Esta função converte um certo  símbolo genérico para uma /keyword/. Esta
+operação  é  muito  útil  quando  estamos  tratando  de  símbolos  que
+pertencem  a outros  pacotes, pois  /keywords/ sempre  pertencem ao  seu
+próprio pacote.
 
 #+begin_src lisp
-(defun post-valid-user-p (user-data)
-  (let ((fields '(:name :birthdate :address :mail :pass)))
-    (loop for field in user-data
+(defun symbol->keyword (symbol)
+  (unless (symbolp symbol)
+    (error "~a is not of type SYMBOL" symbol))
+  (intern (format nil "~a" symbol) :keyword))
+#+end_src
+
+#+RESULTS:
+: SYMBOL->KEYWORD
+
+** Detectando se uma classe é realmente uma tabela
+
+Esta função  toma uma  certa classe  e verifica se  esta é  uma /table/,
+segundo definida pelo ~mito~.
+
+#+begin_src lisp
+(defun class-table-p (class)
+  (let ((class (if (typep class 'symbol)
+                   (find-class class)
+                   class)))
+    (typep class 'mito.dao.table:dao-table-class)))
+#+end_src
+
+#+RESULTS:
+: CLASS-TABLE-P
+
+** Extraindo lista de slots de uma tabela
+
+As funções a seguir foram desenhadas  para que fosse possível obter as
+colunas de uma certa tabela, quando definida como uma classe.
+
+*** Colunas cruas
+
+Esta função é interna, e toma as colunas "cruas" da tabela, isto é, os
+objetos que representam colunas em si.
+
+#+begin_src lisp
+(defun table-get-raw-columns (class)
+  (unless (class-table-p class)
+    (error "~a is not a table class" class))
+  (let* ((class (if (typep class 'symbol)
+                   (find-class class)
+                   class))
+         (all-cols
+          (mapcar #'closer-mop:class-direct-slots
+                 (cons class
+                       (closer-mop:class-direct-superclasses
+                        class)))))
+    (mapcar #'closer-mop:slot-definition-name
+            (remove-if-not
+             (lambda (slot)
+               (typep slot
+                      'mito.dao.column:dao-table-column-class))
+             (alexandria:flatten all-cols)))))
+#+end_src
+
+#+RESULTS:
+: TABLE-GET-RAW-COLUMNS
+
+*** Colunas "lispadas"
+
+Esta função  toma os nomes  de todas as colunas  de uma tabela  em uma
+lista, em forma de /keywords/.
+
+#+begin_src lisp
+(defun table-get-lispy-columns (class)
+  (mapcar #'symbol->keyword
+          (table-get-raw-columns class)))
+#+end_src
+
+#+RESULTS:
+: TABLE-GET-LISPY-COLUMNS
+
+*** Colunas "lispadas" para registro
+
+Esta função toma as colunas de  uma tabela como /keywords/, e filtra-as,
+removendo as colunas criadas automaticamente por ~mito~.
+
+Estas colunas  podem ser utilizadas  para avaliar dados de  entrada de
+registros, uma vez que são os nomes das informações esperadas, a serem
+fornecidas durante seu registro.
+
+#+begin_src lisp
+(defparameter *non-register-columns*
+  '(:created-at :updated-at :id))
+
+(defun table-get-lispy-register-columns (class)
+  (remove-if (lambda (slot)
+               (member slot *non-register-columns* :test #'eql))
+             (table-get-lispy-columns class)))
+#+end_src
+
+#+RESULTS:
+: TABLE-GET-LISPY-REGISTER-COLUMNS
+
+*** Colunas "stringificadas"
+
+Esta função  é igual à  sua versão "lispada",  com a diferença  que as
+colunas apresentam-se como /strings/ em letra minúscula.
+
+#+begin_src lisp
+(defun table-get-string-columns (class)
+  (mapcar (lambda (x) (string-downcase (format nil "~a" x)))
+          (table-get-lispy-columns class)))
+#+end_src
+
+#+RESULTS:
+: TABLE-GET-STRING-COLUMNS
+
+*** Colunas "stringificadas" para registro
+
+Esta função também  é similar à sua versão "lispada",  e também filtra
+as colunas para que sejam as requeridas durante o processo de registro
+na tabela em questão.
+
+#+begin_src lisp
+(defun table-get-string-register-columns (class)
+  (mapcar (lambda (x) (string-downcase (format nil "~a" x)))
+          (table-get-lispy-register-columns class)))
+#+end_src
+
+#+RESULTS:
+: TABLE-GET-STRING-REGISTER-COLUMNS
+
+** Validando uma alist de registro
+
+Esta função valida  uma alist de dados genérica segundo  as colunas de
+registro  da  tabela  representada  por uma  classe,  que  deverá  ser
+igualmente informada.
+
+#+begin_src lisp
+(defun post-valid-data-p (class data)
+  (let ((fields (table-get-lispy-register-columns class)))
+    (loop for field in data
        always (and (consp field)
                    (stringp (cdr field))
-                   (and (member (car field) fields))))))
+                   (member (car field) fields)))))
 #+end_src
+
+#+RESULTS:
+: POST-VALID-DATA-P
+
 

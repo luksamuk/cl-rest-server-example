@@ -3,7 +3,13 @@
   (:use #:cl)
   (:export #:agetf
            #:route-validate-json
-           #:post-valid-user-p))
+           #:symbol->keyword
+           #:class-table-p
+           #:table-get-lispy-columns
+           #:table-get-lispy-register-columns
+           #:table-get-string-columns
+           #:table-get-string-register-columns
+           #:post-valid-data-p))
 
 (defpackage #:rest-server.db
   (:nicknames #:db)

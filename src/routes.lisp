@@ -13,10 +13,10 @@
   (if id
       (http-condition 403 "Route does not accept POST.")
       (let ((object (util:route-validate-json (payload-as-string))))
-        (if (not (util:post-valid-user-p object))
+        (if (not (util:post-valid-data-p 'db:user object))
             (http-condition 400 "Malformed user data")
             (handler-case (let ((user (db:from-alist :user object)))
-                            (mito:insert-dao user) ; todo: verify
+                            (mito:insert-dao user) ; todo: handle
                             (json:encode-json-to-string
                              '((message . "Ok"))))
               (error (e)

@@ -8,7 +8,9 @@
                  #:snooze
                  #:clack
                  #:mito
-                 #:ironclad)
+                 #:ironclad
+                 #:closer-mop
+                 #:alexandria)
     :components
     ((:file "package")
      (:module "src"
