@@ -16,9 +16,13 @@
    (pass :col-type (:varchar 64)
          :initarg :pass
          :accessor user-pass))
-  (:unique-keys mail))
+  (:unique-keys mail)
+  (:documentation
+   "Represents the `user` table on database."))
 
 (defmethod from-alist ((type (eql :user)) alist)
+  "Specializes FROM-ALIST for an entity which can
+be inserted on table `user`."
   (macrolet ((get-field (field)
                `(util:agetf ,field alist)))
     (mito:make-dao-instance

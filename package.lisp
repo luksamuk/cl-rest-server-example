@@ -13,7 +13,10 @@
            #:dao->alist
            #:filter-alist
            #:dao->filtered-alist
-           #:dao->json))
+           #:dao->json)
+  (:documentation
+   "Utilities and miscellaneous structures for
+all other project modules."))
 
 (defpackage #:rest-server.db
   (:nicknames #:db)
@@ -23,10 +26,18 @@
            #:into-json
            #:into-alist
            #:from-alist
-           #:user))
+           #:user)
+  (:documentation
+   "Utilities related to dealing with the database,
+including connection, migrations, models and
+controllers."))
 
 (defpackage #:rest-server
   (:nicknames #:restmain)
   (:use #:cl #:snooze)
   (:export #:start-server
-           #:stop-server))
+           #:stop-server)
+  (:documentation
+   "Default package for the application, containing
+routes and routines for starting/stopping the web
+server."))
