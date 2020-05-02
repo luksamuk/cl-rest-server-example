@@ -2,9 +2,9 @@
 
 (defroute users (:get "application/json" &optional (id 'all))
   (if (eq id 'all)
-      (json:encode-json-to-string
-       (mapcar #'util:dao->filtered-alist
-               (mito:select-dao 'db:user)))
+      (->> (mito:select-dao 'db:user)
+           (mapcar #'util:dao->filtered-alist)
+           json:encode-json-to-string)
       (let ((the-user (mito:find-dao 'db:user :id id)))
         (if (null the-user)
             (http-condition 404 "Unknown user ID")

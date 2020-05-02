@@ -94,7 +94,8 @@ Para criar nosso servidor REST, carregaremos os seguintes /systems/:
 - [[https://github.com/sharplispers/ironclad][Ironclad]], para operações relacionadas a criptografia;
 - [[https://github.com/pcostanza/closer-mop][closer-mop]], para manipulação extra no protocolo de metaobjetos;
 - [[https://common-lisp.net/project/alexandria/][Alexandria]], para utilitários variados  relacionados a diversos tipos
-  de operações.
+  de operações;
+- [[https://github.com/nightfly19/cl-arrows][cl-arrows]], para macros de threading como =->= e =->>=.
 
 # TODO: Ver fukamachi/mito-attachment para  gerenciar arquivos fora do
 # SGBD.
@@ -182,6 +183,7 @@ ql mito       2020-03-25
 ql ironclad   2020-03-25
 ql closer-mop 2020-03-25
 ql alexandria 2020-03-25
+ql cl-arrows  2020-03-25
 #+end_src
 
 Nosso último  passo é executar  o ~qlot~  no console para  que Quicklisp
@@ -267,7 +269,7 @@ que define.
     :description "Exemplo de um servidor REST."
     :author "Lucas S. Vieira <lucasvieira@protonmail.com>"
     :license "MIT"
-    :version "0.0.1"
+    :version "0.0.5"
     :serial t
     :depends-on (#:cl-json
                  #:snooze
@@ -275,7 +277,8 @@ que define.
                  #:mito
                  #:ironclad
                  #:closer-mop
-                 #:alexandria)
+                 #:alexandria
+                 #:cl-arrows)
     :components
     ((:file "package")
      (:module "src"
@@ -304,7 +307,7 @@ podem ser usados globalmente.
 #+begin_src lisp
 (defpackage #:rest-server.util
   (:nicknames #:util)
-  (:use #:cl)
+  (:use #:cl #:cl-arrows)
   (:export #:agetf
            #:route-validate-json
            #:symbol->keyword
@@ -331,7 +334,7 @@ o que também inclui /models/ e /controllers/.
 #+begin_src lisp
 (defpackage #:rest-server.db
   (:nicknames #:db)
-  (:use #:cl #:mito)
+  (:use #:cl #:mito #:cl-arrows)
   (:export #:db-connect
            #:db-disconnect
            #:into-json
@@ -353,7 +356,7 @@ como suas /rotas/.
 #+begin_src lisp
 (defpackage #:rest-server
   (:nicknames #:restmain)
-  (:use #:cl #:snooze)
+  (:use #:cl #:snooze #:cl-arrows)
   (:export #:start-server
            #:stop-server)
   (:documentation
@@ -475,9 +478,9 @@ usuário, respectivamente.
 #+begin_src lisp
 (defroute users (:get "application/json" &optional (id 'all))
   (if (eq id 'all)
-      (json:encode-json-to-string
-       (mapcar #'util:dao->filtered-alist
-               (mito:select-dao 'db:user)))
+      (->> (mito:select-dao 'db:user)
+           (mapcar #'util:dao->filtered-alist)
+           json:encode-json-to-string)
       (let ((the-user (mito:find-dao 'db:user :id id)))
         (if (null the-user)
             (http-condition 404 "Unknown user ID")
@@ -1147,6 +1150,10 @@ colunas de uma certa tabela, quando definida como uma classe.
 Esta função é interna, e toma as colunas "cruas" da tabela, isto é, os
 objetos que representam colunas em si.
 
+Aqui  usaremos um  pouco  das  boas práticas  de  Clojure, através  do
+threading macro =->>=. Isto possibilita encadear operações, de forma que
+o resultado da operação anterior seja o último argumento da próxima.
+
 #+begin_src lisp
 (defun table-get-raw-columns (class)
   "Retrieves all the valid columns from a given
@@ -1158,19 +1165,18 @@ FIND-CLASS function."
   (unless (class-table-p class)
     (error "~a is not a table class" class))
   (let* ((class (if (typep class 'symbol)
-                   (find-class class)
-                   class))
-         (all-cols
-          (mapcar #'closer-mop:class-direct-slots
-                 (cons class
-                       (closer-mop:class-direct-superclasses
-                        class)))))
-    (mapcar #'closer-mop:slot-definition-name
-            (remove-if-not
-             (lambda (slot)
-               (typep slot
-                      'mito.dao.column:dao-table-column-class))
-             (alexandria:flatten all-cols)))))
+                    (find-class class)
+                    class)))
+    (->> class
+         closer-mop:class-direct-superclasses
+         (cons class)
+         (mapcar #'closer-mop:class-direct-slots)
+         alexandria:flatten
+         (remove-if-not
+          (lambda (slot)
+            (typep slot
+                   'mito.dao.column:dao-table-column-class)))
+         (mapcar #'closer-mop:slot-definition-name))))
 #+end_src
 
 #+RESULTS:
@@ -1309,17 +1315,18 @@ CAR is a keyword identifier for a field, and CDR
 is the value itself."
   (let ((class (type-of dao)))
     (loop for field in (util:table-get-lispy-columns class)
-       for getter-sym = (case field
-                          (:id 'mito:object-id)
-                          (:created-at 'mito:object-created-at)
-                          (:updated-at 'mito:object-updated-at)
-                          (otherwise
-                           (intern (string-upcase
-                                    (concatenate 'string
-                                                 (format nil "~a" class)
-                                                 "-"
-                                                 (format nil "~a" field)))
-                                   :rest-server.db)))
+       for getter-sym =
+         (case field
+           (:id 'mito:object-id)
+           (:created-at 'mito:object-created-at)
+           (:updated-at 'mito:object-updated-at)
+           (otherwise
+            (intern (string-upcase
+                     (concatenate 'string
+                                  (format nil "~a" class)
+                                  "-"
+                                  (format nil "~a" field)))
+                    :rest-server.db)))
        collect (cons field (funcall getter-sym dao)))))
 #+end_src
 

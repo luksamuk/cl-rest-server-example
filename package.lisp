@@ -1,6 +1,6 @@
 (defpackage #:rest-server.util
   (:nicknames #:util)
-  (:use #:cl)
+  (:use #:cl #:cl-arrows)
   (:export #:agetf
            #:route-validate-json
            #:symbol->keyword
@@ -20,7 +20,7 @@ all other project modules."))
 
 (defpackage #:rest-server.db
   (:nicknames #:db)
-  (:use #:cl #:mito)
+  (:use #:cl #:mito #:cl-arrows)
   (:export #:db-connect
            #:db-disconnect
            #:into-json
@@ -34,7 +34,7 @@ controllers."))
 
 (defpackage #:rest-server
   (:nicknames #:restmain)
-  (:use #:cl #:snooze)
+  (:use #:cl #:snooze #:cl-arrows)
   (:export #:start-server
            #:stop-server)
   (:documentation

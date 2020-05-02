@@ -1,7 +1,7 @@
 ("quicklisp" .
  (:class qlot/source/dist:source-dist
   :initargs (:distribution "http://beta.quicklisp.org/dist/quicklisp.txt" :%version :latest)
-  :version "2020-03-25"))
+  :version "2020-04-27"))
 ("cl-json" .
  (:class qlot/source/ql:source-ql
   :initargs (:%version "2020-03-25")
@@ -19,6 +19,18 @@
   :initargs (:%version "2020-03-25")
   :version "ql-2020-03-25"))
 ("ironclad" .
+ (:class qlot/source/ql:source-ql
+  :initargs (:%version "2020-03-25")
+  :version "ql-2020-03-25"))
+("closer-mop" .
+ (:class qlot/source/ql:source-ql
+  :initargs (:%version "2020-03-25")
+  :version "ql-2020-03-25"))
+("alexandria" .
+ (:class qlot/source/ql:source-ql
+  :initargs (:%version "2020-03-25")
+  :version "ql-2020-03-25"))
+("cl-arrows" .
  (:class qlot/source/ql:source-ql
   :initargs (:%version "2020-03-25")
   :version "ql-2020-03-25"))

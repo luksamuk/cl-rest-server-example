@@ -50,19 +50,18 @@ FIND-CLASS function."
   (unless (class-table-p class)
     (error "~a is not a table class" class))
   (let* ((class (if (typep class 'symbol)
-                   (find-class class)
-                   class))
-         (all-cols
-          (mapcar #'closer-mop:class-direct-slots
-                 (cons class
-                       (closer-mop:class-direct-superclasses
-                        class)))))
-    (mapcar #'closer-mop:slot-definition-name
-            (remove-if-not
-             (lambda (slot)
-               (typep slot
-                      'mito.dao.column:dao-table-column-class))
-             (alexandria:flatten all-cols)))))
+                    (find-class class)
+                    class)))
+    (->> class
+         closer-mop:class-direct-superclasses
+         (cons class)
+         (mapcar #'closer-mop:class-direct-slots)
+         alexandria:flatten
+         (remove-if-not
+          (lambda (slot)
+            (typep slot
+                   'mito.dao.column:dao-table-column-class)))
+         (mapcar #'closer-mop:slot-definition-name))))
 
 (defun table-get-lispy-columns (class)
   "Returns all the columns from a given CLASS,
@@ -136,17 +135,18 @@ CAR is a keyword identifier for a field, and CDR
 is the value itself."
   (let ((class (type-of dao)))
     (loop for field in (util:table-get-lispy-columns class)
-       for getter-sym = (case field
-                          (:id 'mito:object-id)
-                          (:created-at 'mito:object-created-at)
-                          (:updated-at 'mito:object-updated-at)
-                          (otherwise
-                           (intern (string-upcase
-                                    (concatenate 'string
-                                                 (format nil "~a" class)
-                                                 "-"
-                                                 (format nil "~a" field)))
-                                   :rest-server.db)))
+       for getter-sym =
+         (case field
+           (:id 'mito:object-id)
+           (:created-at 'mito:object-created-at)
+           (:updated-at 'mito:object-updated-at)
+           (otherwise
+            (intern (string-upcase
+                     (concatenate 'string
+                                  (format nil "~a" class)
+                                  "-"
+                                  (format nil "~a" field)))
+                    :rest-server.db)))
        collect (cons field (funcall getter-sym dao)))))
 
 (defun filter-alist (alist censored-keys)
