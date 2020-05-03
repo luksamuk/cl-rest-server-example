@@ -57,8 +57,7 @@
                         dao
                         (util:agetf :password object))
                        (util:http-response ()
-                         `((:mail
-                            . ,(util:agetf :mail object))
+                         `((:mail  . ,(util:agetf :mail object))
                            (:token . "")))) ; TODO: JWT token
                       (t (util:http-response (403)
                           "Wrong password"))))))))

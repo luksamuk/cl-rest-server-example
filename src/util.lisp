@@ -28,10 +28,10 @@ Returns the associated value or NIL if not found."
            ,(cond ((null body)
                    `(list '(:message . "OK")))
                   ((consp (first body))
-                   `(quote (first body))) ; todo: subformats
+                   (first body)) ; todo: subformats
                   ((and (stringp (first body))
                         (= (length body) 1))
-                   `(list (cons :message ,(first body))))
+                   `(list '(:message . ,(first body))))
                   (t
                    `(list
                      (cons :message

@@ -521,7 +521,7 @@ que retorna um JSON com todos os usuários cadastrados.
 #+end_src
 
 #+RESULTS:
-: #<FUNCTION (LAMBDA (PARAMS)) {5338432B}>
+: #<FUNCTION (LAMBDA (PARAMS)) {5335D44B}>
 
 Finalmente,  estabelecemos   uma  rota   para  a  requisição   =GET=  em
 ~/users/:id~, onde  ~:id~ representa  um parâmetro  esperado na  rota, que
@@ -613,7 +613,7 @@ mensagem que indica dados de usuário mal-formados.
 #+end_src
 
 #+RESULTS:
-: #<FUNCTION (LAMBDA (PARAMS)) {5335EE0B}>
+: #<FUNCTION (LAMBDA (PARAMS)) {5335D9EB}>
 
 ** Autenticar usuário
 
@@ -639,15 +639,14 @@ mensagem que indica dados de usuário mal-formados.
                         dao
                         (util:agetf :password object))
                        (util:http-response ()
-                         `((:mail
-                            . ,(util:agetf :mail object))
+                         `((:mail  . ,(util:agetf :mail object))
                            (:token . "")))) ; TODO: JWT token
                       (t (util:http-response (403)
                           "Wrong password"))))))))
 #+end_src
 
 #+RESULTS:
-: #<FUNCTION (LAMBDA (PARAMS)) {53361ECB}>
+: #<FUNCTION (LAMBDA (PARAMS)) {5335FD9B}>
 
 * Banco de dados
 
@@ -1243,10 +1242,10 @@ resposta será gerada /ad-hoc/ e inserida no corpo do JSON, com uma chave
            ,(cond ((null body)
                    `(list '(:message . "OK")))
                   ((consp (first body))
-                   `(quote (first body))) ; todo: subformats
+                   (first body)) ; todo: subformats
                   ((and (stringp (first body))
                         (= (length body) 1))
-                   `(list (cons :message ,(first body))))
+                   `(list '(:message . ,(first body))))
                   (t
                    `(list
                      (cons :message
