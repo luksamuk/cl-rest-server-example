@@ -213,7 +213,7 @@ keyword keys are in CENSORED-KEYS."
      collect element))
 
 (defparameter *censored-dao-fields*
-  '(:id :created-at :updated-at :password-hash :password-salt)
+  '(:created-at :updated-at :password-hash :password-salt)
   "Lists fields which are not supposed to be show
 to someone attempting to retrieve a field.")
 

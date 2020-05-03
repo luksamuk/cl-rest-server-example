@@ -1644,7 +1644,7 @@ ao usuário, quando obtidos através de uma rota.
 
 #+begin_src lisp
 (defparameter *censored-dao-fields*
-  '(:id :created-at :updated-at :password-hash :password-salt)
+  '(:created-at :updated-at :password-hash :password-salt)
   "Lists fields which are not supposed to be show
 to someone attempting to retrieve a field.")
 #+end_src
