@@ -21,44 +21,9 @@
 (setf (route *app* "/users" :method :POST)
       (lambda (params)
         (declare (ignore params))
-        (let ((object (util:get-payload *request*)))
-          (if (not (util:post-valid-data-p 'db:user object
-                                           :has-password t))
-              (util:http-response (400)
-                "Malformed user data")
-              (handler-case
-                  (progn
-                    (db:control-store :user object)
-                    ;;(db:control-store :user *request* *response*)
-                    (util:http-response ())) ; OK
-                (dbi.error:dbi-database-error (e)
-                  (progn
-                    (princ "Error: User already exists.")
-                    (terpri)
-                    (format t "Condition: ~a~%Payload: ~a" e object))
-                  (util:http-response (400)
-                    "User already exists")))))))
+        (db:control-store :user *request* *response*)))
 
 (setf (route *app* "/login" :method :POST)
       (lambda (params)
         (declare (ignore params))
-        (let ((object (util:get-payload *request*)))
-          (if (or (null (util:agetf :mail object))
-                  (null (util:agetf :password object)))
-              (util:http-response (400)
-                "Malformed login data")
-              (let ((dao
-                     (mito:find-dao
-                      'db:user
-                      :mail (util:agetf :mail object))))
-                (cond ((null dao)
-                       (util:http-response (404)
-                         "Unknown user"))
-                      ((mito-auth:auth
-                        dao
-                        (util:agetf :password object))
-                       (util:http-response ()
-                         `((:mail  . ,(util:agetf :mail object))
-                           (:token . "")))) ; TODO: JWT token
-                      (t (util:http-response (403)
-                          "Wrong password"))))))))
+        (db:control-store :session *request* *response*)))

@@ -19,9 +19,10 @@ Returns the associated value or NIL if not found."
      (setf (lack.response:response-status ,response-object)
            ,http-code)))
 
-(defmacro http-response ((&optional (http-code 200))
+(defmacro http-response ((&optional (http-code 200)
+                          res)
                          &body body)
-  `(progn (route-prepare-response ningle:*response*
+  `(progn (route-prepare-response ,(or res 'ningle:*response*)
                                   ,http-code
                                   "application/json")
           (json:encode-json-to-string

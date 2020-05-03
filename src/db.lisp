@@ -85,15 +85,7 @@ them if necessary."
 
 (defgeneric control-show (type-key request response))
 
-(defgeneric control-store (type-key alist)
-  "Generates a database entity from the given
-ALIST, effectively INSERTING it in the database.
-
-TYPE-KEY usually designates a keyword referring
-to a specific table, which will be dispatched by
-value. The ALIST must be populated with
-information compatible with the referred table's
-obligatory informations for entity creation.")
+(defgeneric control-store (type-key request response))
 
 (defgeneric control-update (type-key request response))
 

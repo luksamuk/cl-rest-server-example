@@ -47,6 +47,7 @@
   - [[#controladores][Controladores]]
     - [[#operações-genéricas][Operações genéricas]]
     - [[#usuário-1][Usuário]]
+    - [[#sessão][Sessão]]
 - [[#utilitários][Utilitários]]
   - [[#obtendo-elemento-de-uma-alist-ao-usar-macros][Obtendo elemento de uma alist ao usar macros]]
   - [[#preparando-uma-resposta-em-json-do-ningle][Preparando uma resposta em JSON do Ningle]]
@@ -298,7 +299,8 @@ que define.
                     (:module "models"
                       :components ((:file "user")))
                     (:module "controllers"
-                      :components ((:file "user-controller")))))))      
+                      :components ((:file "user-controller")
+                                   (:file "session-controller")))))))
 #+end_src
 
 ** Definição dos pacotes
@@ -483,7 +485,8 @@ Esta é a relação de métodos e rotas da aplicação, bem como as entradas
 e  saídas esperadas  mediante  sucesso. Absolutamente  todas as  rotas
 recebem e enviam JSON em forma de /string/.
 
-# TODO: Mudar isso quando já tivermos autenticação.
+# TODO: Mudar isso quando já  tivermos autenticação (requerer token em
+# todas as rotas acessíveis apenas para usuários).
 
 |--------+------------------+-----------------------------------+------------------------------------|
 | <9>    | <16>             | <16>                              | <16>                               |
@@ -503,9 +506,6 @@ recebem e enviam JSON em forma de /string/.
 
 Estas rotas  serão estabelecidas através  do system Ningle.  Para mais
 informações, consulte [[https://github.com/fukamachi/ningle][este repositório]].
-
-# TODO:  Será necessário  abstrair  as atividades  das  rotas para  os
-# controllers.
 
 # TODO: Implementar rotas faltantes.
 
@@ -553,105 +553,34 @@ existe no banco de dados, e sob um código HTTP 404 (não encontrado).
 
 ** Registrar usuário
 
-A requisição ~POST~  em ~/users~ espera por um arquivo  JSON válido com os
-seguintes campos, para que um usuário seja registrado no sistema:
-
-- ~name~ -- Nome do usuário;
-- ~birthdate~  --  Data  de  aniversário com  fuso  horário.  Exemplo:
-  =1990-01-01 12:00:00-03=;
-- ~address~ -- Endereço do usuário;
-- ~mail~ -- E-mail do usuário;
-- ~pass~ -- Senha do usuário registrado em texto plano.
-
-Estes campos são automaticamente deduzidos a partir da classe =db:user=,
-que representa  a tabela =user=, e  portanto podem mudar sem  prejuízo à
-verificação da rota.
-
-Podemos verificar de  tempos em tempos os campos de  registro para uma
-certa tabela desta forma, por exemplo:
-
-#+begin_src lisp :tangle no :cache yes :exports both :results verbatim
-(util:table-get-lispy-register-columns 'db:user)
-#+end_src
-
-#+RESULTS[453a8ccbfe64e893ccf911e124b6e967d4ae5ae8]:
-: (:NAME :BIRTHDATE :ADDRESS :MAIL :PASS)
-
-Caso  os  dados  sejam  válidos  e o  usuário  seja  registrado,  será
-retornado um JSON:
-
-#+begin_src json :tangle no
-{ "message": "OK" }
-#+end_src
-
-# TODO: Receber senha em texto plano é algo viável mesmo? Será que
-# não seria  melhor fazer o  hash no client-side  ou ao menos  falar a
-# respeito de SSL?
-
-Abaixo, definimos tal rota.
-
-Caso  os   dados  informados   para  o   cadastro  do   usuário  sejam
-insuficientes, retornamos um erro 400  com um corpo JSON, contendo uma
-mensagem que indica dados de usuário mal-formados.
+Abaixo,  definimos a  rota  para  registro do  usuário.  Veja que  não
+tratamos  as  regras  de  negócio  aqui;  estas  ficarão  a  cargo  do
+controlador do usuário.
 
 #+begin_src lisp
 (setf (route *app* "/users" :method :POST)
       (lambda (params)
         (declare (ignore params))
-        (let ((object (util:get-payload *request*)))
-          (if (not (util:post-valid-data-p 'db:user object
-                                           :has-password t))
-              (util:http-response (400)
-                "Malformed user data")
-              (handler-case
-                  (progn
-                    (db:control-store :user object)
-                    ;;(db:control-store :user *request* *response*)
-                    (util:http-response ())) ; OK
-                (dbi.error:dbi-database-error (e)
-                  (progn
-                    (princ "Error: User already exists.")
-                    (terpri)
-                    (format t "Condition: ~a~%Payload: ~a" e object))
-                  (util:http-response (400)
-                    "User already exists")))))))
+        (db:control-store :user *request* *response*)))
 #+end_src
 
 #+RESULTS:
-: #<FUNCTION (LAMBDA (PARAMS)) {5335D9EB}>
+: #<FUNCTION (LAMBDA (PARAMS)) {5335B62B}>
 
 ** Autenticar usuário
 
-*NOTA:* Esta rota ainda está incompleta, pois não retorna um token JWT.
+Esta rota  realiza o  login para um  usuário, dado o  seu email  e sua
+senha, e  deve responder com algumas  informações e um token  JWT para
+operações subsequentes, caso haja sucesso.
+
+As regras de negócio são tratadas no controlador de sessão.
 
 #+begin_src lisp
 (setf (route *app* "/login" :method :POST)
       (lambda (params)
         (declare (ignore params))
-        (let ((object (util:get-payload *request*)))
-          (if (or (null (util:agetf :mail object))
-                  (null (util:agetf :password object)))
-              (util:http-response (400)
-                "Malformed login data")
-              (let ((dao
-                     (mito:find-dao
-                      'db:user
-                      :mail (util:agetf :mail object))))
-                (cond ((null dao)
-                       (util:http-response (404)
-                         "Unknown user"))
-                      ((mito-auth:auth
-                        dao
-                        (util:agetf :password object))
-                       (util:http-response ()
-                         `((:mail  . ,(util:agetf :mail object))
-                           (:token . "")))) ; TODO: JWT token
-                      (t (util:http-response (403)
-                          "Wrong password"))))))))
+        (db:control-store :session *request* *response*)))
 #+end_src
-
-#+RESULTS:
-: #<FUNCTION (LAMBDA (PARAMS)) {5335FD9B}>
 
 * Banco de dados
 
@@ -1083,18 +1012,19 @@ modelos encontra-se em um arquivo próprio.
 Aqui definimos  os campos para  um usuário  do sistema.  Os  campos da
 tabela do usuário estão listados a seguir:
 
-|------------+-------------+----------------------------|
-| Nome       | Tipo        | Observações                |
-|------------+-------------+----------------------------|
-| id         | BIGSERIAL   | Automático, chave primária |
-| name       | VARCHAR 80  |                            |
-| birthdate  | TIMESTAMPTZ |                            |
-| address    | VARCHAR 255 |                            |
-| mail       | VARCHAR 64  | Índice único               |
-| pass       | VARCHAR 64  |                            |
-| created_at | TIMESTAMPTZ | Automático                 |
-| updated_at | TIMESTAMPTZ | Automático                 |
-|------------+-------------+----------------------------|
+|---------------+-------------+----------------------------|
+| Nome          | Tipo        | Observações                |
+|---------------+-------------+----------------------------|
+| id            | BIGSERIAL   | Automático, chave primária |
+| name          | VARCHAR 80  |                            |
+| birthdate     | TIMESTAMPTZ |                            |
+| address       | VARCHAR 255 |                            |
+| mail          | VARCHAR 64  | Índice único               |
+| password_hash | CHAR 64     | Automático (mito-auth)     |
+| password_salt | BINARY 20   | Automático (mito-auth)     |
+| created_at    | TIMESTAMPTZ | Automático                 |
+| updated_at    | TIMESTAMPTZ | Automático                 |
+|---------------+-------------+----------------------------|
 
 #+begin_src lisp
 (deftable user (has-secure-password)
@@ -1160,28 +1090,13 @@ A documentar.
 
 **** Store
 
-Um  método  ~control-store~ toma  uma  certa  chave de  objeto  (por
-exemplo, ~:user~) e uma alist contendo  dados variados para que o objeto
-seja criado.   Este método fica  responsável por selecionar  *apenas as
-chaves pertinentes*,  ou seja, a  alist poderia  ter mais dados  do que
-necessário,  mas   o  processo   de  criação   do  objeto   não  seria
-prejudicado. Portanto, é necessário defini-lo manualmente por tabela.
+# TODO:  Relativo a  cadastro ou  operações com  uma entidade,  ou com
+# elementos que podem não ser entidades.
 
-A execução de ~control-store~ efetivamente  deverá *criar o objeto no
-banco de dados*.
-
-# TODO: Alterar alist e usar a requisição diretamente
+A documentar.
 
 #+begin_src lisp
-(defgeneric control-store (type-key alist)
-  "Generates a database entity from the given
-ALIST, effectively INSERTING it in the database.
-
-TYPE-KEY usually designates a keyword referring
-to a specific table, which will be dispatched by
-value. The ALIST must be populated with
-information compatible with the referred table's
-obligatory informations for entity creation.")
+(defgeneric control-store (type-key request response))
 #+end_src
 
 **** Update
@@ -1213,23 +1128,86 @@ A documentar.
 (in-package #:rest-server.db)
 #+end_src
 
-Definimos  o método  para construção  de um  usuário a  partir de  uma
-~alist~.
+**** Store
+
+Este método é chamado por uma requisição ~POST~ em ~/users~.
+
+O  corpo da  requisição espera  pelos campos  necessários para  que um
+usuário seja registrado no sistema.
+
+Estes campos são automaticamente deduzidos a partir da classe ~db:user~,
+que representa  a tabela ~user~, e  portanto podem mudar sem  prejuízo à
+verificação dos campos necessários.
+
+Este  método  pode retornar  códigos  HTTP  ~400~  caso os  dados  sejam
+insuficientes,  ou caso  o usuário  já exista  no banco  de dados.  Do
+contrário, é  retornada uma  mensagem de sucesso  em JSON,  cujo campo
+~"message"~ contém a string ~"OK"~.
 
 #+begin_src lisp
-(defmethod control-store ((type (eql :user)) alist)
-  "Specializes CONTROL-STORE for an entity,
-inserting it on table `user`."
-  (macrolet ((get-field (field)
-               `(util:agetf ,field alist)))
-    (mito:create-dao
-     'user
-     :name (get-field :name)
-     :birthdate (get-field :birthdate)
-     :address (get-field :address)
-     :mail (get-field :mail)
-     :password (get-field :password))))
+(defmethod control-store ((type (eql :user)) req res)
+  (let ((payload (util:get-payload req)))
+    (if (not (util:post-valid-data-p 'db:user payload
+                                     :has-password t))
+        (util:http-response (400)
+          "Malformed user data")
+        (handler-case
+            (macrolet ((get-field (field)
+                         `(util:agetf ,field payload)))
+              (mito:create-dao
+               'user
+               :name (get-field :name)
+               :birthdate (get-field :birthdate)
+               :address (get-field :address)
+               :mail (get-field :mail)
+               :password (get-field :password))
+              (util:http-response ())) ; 200 OK
+          (dbi.error:dbi-database-error (e)
+            (declare (ignore e))
+            (util:http-response (400)
+              "User already exists"))))))
 #+end_src
+
+#+RESULTS:
+: #<STANDARD-METHOD REST-SERVER.DB:CONTROL-STORE ((EQL :USER) T T) {1006C1B623}>
+
+*** Sessão
+:PROPERTIES:
+:header-args:lisp: :tangle src/controllers/session-controller.lisp
+:END:
+
+#+begin_src lisp
+(in-package #:rest-server.db)
+#+end_src
+
+**** Store
+
+# TODO: Gerar token JWT.
+
+#+begin_src lisp
+(defmethod control-store ((type (eql :session)) req res)
+  (let* ((payload (util:get-payload req))
+         (mail (util:agetf :mail payload))
+         (pass (util:agetf :password payload)))
+    (if (or (null mail) (null pass))
+        (util:http-response (400)
+          "Malformed login data")
+        (let* ((dao (mito:find-dao 'db:user :mail mail))
+               (alist (if dao (util:dao->alist dao) nil)))
+          (cond ((null dao)
+                 (util:http-response (404)
+                   "Unknown user"))
+                ((mito-auth:auth dao pass)
+                 (util:http-response ()
+                   `((:id . ,(util:agetf :id alist))
+                     (:mail . ,mail)
+                     (:token . "")))) ; TODO: JWT token
+                (t (util:http-response (403)
+                     "Wrong password")))))))
+#+end_src
+
+#+RESULTS:
+: #<STANDARD-METHOD REST-SERVER.DB:CONTROL-STORE ((EQL :SESSION) T T) {1005548213}>
 
 * Utilitários
 :PROPERTIES:
@@ -1291,9 +1269,10 @@ resposta será gerada /ad-hoc/ e inserida no corpo do JSON, com uma chave
 ~"message"~. Por padrão, retorna uma mensagem de sucesso (código 200).
 
 #+begin_src lisp
-(defmacro http-response ((&optional (http-code 200))
+(defmacro http-response ((&optional (http-code 200)
+                          res)
                          &body body)
-  `(progn (route-prepare-response ningle:*response*
+  `(progn (route-prepare-response ,(or res 'ningle:*response*)
                                   ,http-code
                                   "application/json")
           (json:encode-json-to-string

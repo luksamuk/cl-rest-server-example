@@ -23,4 +23,5 @@
                     (:module "models"
                       :components ((:file "user")))
                     (:module "controllers"
-                      :components ((:file "user-controller")))))))
+                      :components ((:file "user-controller")
+                                   (:file "session-controller")))))))
