@@ -475,19 +475,31 @@ Esta é a relação de métodos e rotas da aplicação, bem como as entradas
 e  saídas esperadas  mediante  sucesso. Absolutamente  todas as  rotas
 recebem e enviam JSON em forma de /string/.
 
-|--------+------------+----------------------+----------------------|
-| Método | Rota       | Entrada              | Saída                |
-|--------+------------+----------------------+----------------------|
-| GET    | ~/users~     | -                    | Lista de usuários.   |
-| GET    | ~/users/:id~ | -                    | Dados de um usuário. |
-| POST   | ~/users~     | Dados de um usuário. | Mensagem de OK.      |
-|--------+------------+----------------------+----------------------|
+# TODO: Mudar isso quando já tivermos autenticação.
+
+|--------+------------------+-----------------------------------+------------------------------------|
+| <9>    | <16>             | <16>                              | <16>                               |
+| Método | Rota             | Entrada                           | Saída                              |
+|--------+------------------+-----------------------------------+------------------------------------|
+| POST   | ~/login~           | E-mail e senha do usuário         | Token JWT de autenticação          |
+| GET    | ~/users~           | -                                 | Lista de usuários.                 |
+| GET    | ~/users/:id~       | -                                 | Dados de um usuário.               |
+| GET    | ~/activ~           | -                                 | Lista de atividades.               |
+| GET    | ~/activ/:id~       | -                                 | Detalhes de uma atividade.         |
+| GET    | ~/users/:id/activ~ | -                                 | Lista de atividades de um usuário. |
+| POST   | ~/users~           | Dados de um usuário.              | Mensagem de OK.                    |
+| POST   | ~/activ~           | Dados de criação de uma atividade | Mensagem de OK.                    |
+| DELETE | ~/users/:id~       | -                                 | Mensagem de OK.                    |
+| DELETE | ~/activ/:id~       | -                                 | Mensagem de OK.                    |
+|--------+------------------+-----------------------------------+------------------------------------|
 
 Estas rotas  serão estabelecidas através  do system Ningle.  Para mais
 informações, consulte [[https://github.com/fukamachi/ningle][este repositório]].
 
 # TODO:  Será necessário  abstrair  as atividades  das  rotas para  os
 # controllers.
+
+# TODO: Implementar rotas faltantes.
 
 ** Listagem de usuários
 
