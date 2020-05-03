@@ -46,8 +46,11 @@
   - [[#controladores][Controladores]]
 - [[#utilitários][Utilitários]]
   - [[#obtendo-elemento-de-uma-alist-ao-usar-macros][Obtendo elemento de uma alist ao usar macros]]
-  - [[#validando-um-json-para-uma-rota][Validando um JSON para uma rota]]
+  - [[#preparando-uma-resposta-em-json-do-ningle][Preparando uma resposta em JSON do Ningle]]
   - [[#convertendo-símbolos-para-keywords][Convertendo símbolos para keywords]]
+  - [[#convertendo-strings-para-keywords][Convertendo strings para keywords]]
+  - [[#reescrevendo-alist-com-pares-em-keywords][Reescrevendo alist com pares em keywords]]
+  - [[#tomando-o-payload-do-ningle][Tomando o payload do Ningle]]
   - [[#detectando-se-uma-classe-é-realmente-uma-tabela][Detectando se uma classe é realmente uma tabela]]
   - [[#extraindo-lista-de-slots-de-uma-tabela][Extraindo lista de slots de uma tabela]]
     - [[#colunas-cruas][Colunas cruas]]
@@ -87,7 +90,7 @@ ecossistema possam ser acessados e manipulados em runtime.
 
 Para criar nosso servidor REST, carregaremos os seguintes /systems/:
 
-- [[https://github.com/joaotavora/snooze][Snooze]], para criação de aplicações REST;
+- [[http://8arrow.org/ningle/][Ningle]], para criação de aplicações REST;
 - [[https://quickref.common-lisp.net/clack.html][Clack]], servidor que trabalha sob o Snooze;
 - [[https://quickref.common-lisp.net/cl-json.html][cl-json]], para /parsing/ e serialização de informações em JSON;
 - [[https://github.com/fukamachi/mito][Mito]], para interação com o banco de dados;
@@ -177,7 +180,7 @@ utilizar, da forma como se vê a seguir:
 
 #+begin_src fundamental :tangle qlfile
 ql cl-json    2020-03-25
-ql snooze     2020-03-25
+ql ningle     2020-03-25
 ql clack      2020-03-25
 ql mito       2020-03-25
 ql ironclad   2020-03-25
@@ -272,7 +275,7 @@ que define.
     :version "0.0.5"
     :serial t
     :depends-on (#:cl-json
-                 #:snooze
+                 #:ningle
                  #:clack
                  #:mito
                  #:ironclad
@@ -283,8 +286,8 @@ que define.
     ((:file "package")
      (:module "src"
        :components ((:file "util")
-                    (:file "routes")
                     (:file "server")
+                    (:file "routes")
                     (:file "db")
                     (:module "models"
                       :components ((:file "user")))))))
@@ -309,13 +312,15 @@ podem ser usados globalmente.
   (:nicknames #:util)
   (:use #:cl #:cl-arrows)
   (:export #:agetf
-           #:route-validate-json
+           #:route-prepare-response
+           #:http-response
            #:symbol->keyword
            #:class-table-p
            #:table-get-lispy-columns
            #:table-get-lispy-register-columns
            #:table-get-string-columns
            #:table-get-string-register-columns
+           #:get-payload
            #:post-valid-data-p
            #:dao->alist
            #:filter-alist
@@ -325,6 +330,9 @@ podem ser usados globalmente.
    "Utilities and miscellaneous structures for
 all other project modules."))
 #+end_src
+
+#+RESULTS:
+: #<PACKAGE "REST-SERVER.UTIL">
 
 *** Definição do pacote de banco de dados
 
@@ -356,7 +364,7 @@ como suas /rotas/.
 #+begin_src lisp
 (defpackage #:rest-server
   (:nicknames #:restmain)
-  (:use #:cl #:snooze #:cl-arrows)
+  (:use #:cl #:cl-arrows #:ningle)
   (:export #:start-server
            #:stop-server)
   (:documentation
@@ -364,6 +372,9 @@ como suas /rotas/.
 routes and routines for starting/stopping the web
 server."))
 #+end_src
+
+#+RESULTS:
+: #<PACKAGE "REST-SERVER">
 
 * Inicialização do servidor
 :PROPERTIES:
@@ -397,6 +408,13 @@ is running.")
   "Default port for the server.")
 #+end_src
 
+Também precisaremos de um roteador  para as rotas, que serão definidas
+a seguir. Este roteador é um aplicativo do system Ningle.
+
+#+begin_src lisp
+(defparameter *app* (make-instance 'ningle:<app>))
+#+end_src
+
 ** Iniciando o servidor
 
 Quando  esta função  é  chamada, caso  o servidor  já  não tenha  sido
@@ -412,7 +430,7 @@ Returns T if it succeeded in starting the server."
   (unless *server-handler*
     (db:db-connect)
     (setf *server-handler*
-          (clack:clackup (snooze:make-clack-app)
+          (clack:clackup *app*
                          :port *server-port*))
     t))
 #+end_src
@@ -465,36 +483,55 @@ recebem e enviam JSON em forma de /string/.
 | POST   | ~/users~     | Dados de um usuário. | Mensagem de OK.      |
 |--------+------------+----------------------+----------------------|
 
+Estas rotas  serão estabelecidas através  do system Ningle.  Para mais
+informações, consulte [[https://github.com/fukamachi/ningle][este repositório]].
+
+# TODO:  Será necessário  abstrair  as atividades  das  rotas para  os
+# controllers.
+
 ** Listagem de usuários
 
-Esta definição trata dos seguintes métodos e rotas:
-
-- ~GET /users~
-- ~GET /users/id~
-
-Estes  métodos retornam  arquivos JSON  com os  dados de  todos ou  um
-usuário, respectivamente.
+Ningle  possibilita  que  criemos  uma definição  de  rota  para  cada
+caso. Primeiramente, definimos uma rota para requisição =GET= em =/users=,
+que retorna um JSON com todos os usuários cadastrados.
 
 #+begin_src lisp
-(defroute users (:get "application/json" &optional (id 'all))
-  (if (eq id 'all)
-      (->> (mito:select-dao 'db:user)
-           (mapcar #'util:dao->filtered-alist)
-           json:encode-json-to-string)
-      (let ((the-user (mito:find-dao 'db:user :id id)))
-        (if (null the-user)
-            (http-condition 404 "Unknown user ID")
-            (util:dao->json the-user)))))
+(setf (route *app* "/users" :method :GET)
+      (lambda (params)
+        (declare (ignore params))
+        (->> (mito:select-dao 'db:user)
+             (mapcar #'util:dao->filtered-alist)
+             json:encode-json-to-string)))
 #+end_src
 
+#+RESULTS:
+: #<FUNCTION (LAMBDA (PARAMS)) {5338432B}>
+
+Finalmente,  estabelecemos   uma  rota   para  a  requisição   =GET=  em
+~/users/:id~, onde  ~:id~ representa  um parâmetro  esperado na  rota, que
+estará na variável ~params~.
+
+Caso a  ID do usuário em  questão seja inválida, retornamos  um objeto
+JSON com  um único  campo de  mensagem, informando  que aquela  ID não
+existe no banco de dados, e sob um código HTTP 404 (não encontrado).
+
+#+begin_src lisp
+(setf (route *app* "/users/:id" :method :GET)
+      (lambda (params)
+        (let ((the-user
+               (mito:find-dao 'db:user
+                              :id (util:agetf :id params))))
+          (if (null the-user)
+              (util:http-response *response* (404)
+                                  "Unknown user ID ~a"
+                                  (util:agetf :id params))
+              (util:dao->json the-user)))))
+#+end_src
+
+#+RESULTS:
+: #<FUNCTION (LAMBDA (PARAMS)) {5337F12B}>
+
 ** Registrar usuário
-
-Esta definição trata dos métodos e rotas:
-
-- ~POST /users~
-- ~POST /users/id~
-
-...onde a primeira requisição é a esperada, e a segunda rota é /inválida/.
 
 A requisição ~POST~  em ~/users~ espera por um arquivo  JSON válido com os
 seguintes campos, para que um usuário seja registrado no sistema:
@@ -524,30 +561,43 @@ Caso  os  dados  sejam  válidos  e o  usuário  seja  registrado,  será
 retornado um JSON:
 
 #+begin_src json :tangle no
-{ "message": "Ok" }
+{ "message": "OK" }
 #+end_src
 
 # TODO: Receber senha em texto plano é algo viável mesmo? Será que
 # não seria  melhor fazer o  hash no client-side  ou ao menos  falar a
 # respeito de SSL?
 
-Abaixo, definimos tais rotas.
+Abaixo, definimos tal rota.
+
+Caso  os   dados  informados   para  o   cadastro  do   usuário  sejam
+insuficientes, retornamos um erro 400  com um corpo JSON, contendo uma
+mensagem que indica dados de usuário mal-formados.
 
 #+begin_src lisp
-(defroute users (:post "application/json" &optional id)
-  (if id
-      (http-condition 403 "Route does not accept POST.")
-      (let ((object (util:route-validate-json (payload-as-string))))
-        (if (not (util:post-valid-data-p 'db:user object))
-            (http-condition 400 "Malformed user data")
-            (handler-case (let ((user (db:from-alist :user object)))
-                            (mito:insert-dao user) ; todo: handle
-                            (json:encode-json-to-string
-                             '((message . "Ok"))))
-              (error (e)
-                (declare (ignore e))
-                (http-condition 400 "Malformed user data")))))))
+(setf (route *app* "/users" :method :POST)
+      (lambda (params)
+        (declare (ignore params))
+        (let ((object (util:get-payload *request*)))
+          (if (not (util:post-valid-data-p 'db:user object))
+              (util:http-response *response* (400)
+                                  "Malformed user data")
+              (handler-case
+                  (let ((user (db:from-alist :user object)))
+                    (mito:insert-dao user)
+                    (util:http-response *response* ())) ; OK
+                (dbi.error:dbi-database-error (e)
+                  (progn
+                    (princ "Error: User already exists.")
+                    (terpri)
+                    (format t "Condition: ~a~%Payload: ~a" e object))
+                  (util:http-response
+                   ,*response* (400)
+                   "User already exists")))))))
 #+end_src
+
+#+RESULTS:
+: #<FUNCTION (LAMBDA (PARAMS)) {53395D3B}>
 
 * Banco de dados
 
@@ -1076,28 +1126,50 @@ Returns the associated value or NIL if not found."
   `(cdr (assoc ,key ,alist)))
 #+end_src
 
-** Validando um JSON para uma rota
+** Preparando uma resposta em JSON do Ningle
 
-Este macro  toma um certo /payload/  de uma rota qualquer  e verifica se
-ele é válido. Caso não seja, é automaticamente ativada uma condição do
-protocolo HTTP como  resposta, sob um erro 400 e  uma mensagem de JSON
-mal-formado.
+Este macro,  se usado  adequadamente (dentro de  uma rota  do Ningle),
+prepara a rota atual para uma resposta HTTP. Por padrão, determina uma
+resposta de sucesso (código 200) com um corpo JSON.
 
 #+begin_src lisp
-(defmacro route-validate-json (payload)
-  "Validates a JSON payload from a network route.
-
-If the payload is not a valid JSON object,
-automatically yields a 400 error with body
-'Malformed JSON' on the route."
-  (let ((payload-sym (gensym)))
-    `(let ((,payload-sym ,payload))
-       (handler-case (json:decode-json-from-string
-                      ,payload-sym)
-         (error (e)
-           (declare (ignore e))
-           (http-condition 400 "Malformed JSON: ~a" ,payload-sym))))))
+(defmacro route-prepare-response (response-object
+                                  &optional
+                                    (http-code 200)
+                                    (type "application/json"))
+  `(progn
+     (setf (lack.response:response-headers ,response-object)
+           (append
+            (lack.response:response-headers ,response-object)
+            (list :content-type ,type)))
+     (setf (lack.response:response-status ,response-object)
+           ,http-code)))
 #+end_src
+
+#+RESULTS:
+: ROUTE-PREPARE-RESPONSE
+
+O macro a seguir é preparado para ser utilizado diretamente nas rotas,
+como uma  forma sucinta  de estabelecer  uma resposta  formatada. Esta
+resposta será gerada /ad-hoc/ e inserida no corpo do JSON, com uma chave
+~"message"~. Por padrão, retorna uma mensagem de sucesso (código 200).
+
+#+begin_src lisp
+(defmacro http-response (response-object
+                         (&optional (http-code 200))
+                         &optional (format-string "OK")
+                         &rest rest)
+  `(progn (route-prepare-response ,response-object
+                                  ,http-code
+                                  "application/json")
+          (json:encode-json-to-string
+           (list
+            (cons :message
+                  (format nil ,format-string ,@rest))))))
+#+end_src
+
+#+RESULTS:
+: HTTP-RESPONSE
 
 ** Convertendo símbolos para keywords
 
@@ -1116,6 +1188,65 @@ próprio pacote.
 
 #+RESULTS:
 : SYMBOL->KEYWORD
+
+** Convertendo strings para keywords
+
+Esta função é similar à anterior, porém converte uma certa string para
+uma keyword.  Esta operação é  útil na formatação do  payload recebido
+via requisição POST, mas não é usado diretamente.
+
+#+begin_src lisp
+(defun string->keyword (string)
+    "Transforms a specific STRING into a keyword.
+The string is trimmed and transformed to uppercase."
+  (unless (stringp string)
+    (error "~a is not of type STRING" string))
+  (intern (->> string
+               (string-trim '(#\Space #\Return))
+               string-upcase)
+          :keyword))
+#+end_src
+
+#+RESULTS:
+: STRING->KEYWORD
+
+** Reescrevendo alist com pares em keywords
+
+Esta  função toma  uma alist  (proveniente de  uma requisição  POST) e
+reestrutura-a, transformando cada uma das chaves em uma KEYWORD.
+
+#+begin_src lisp
+(defun restructure-alist (alist)
+  "Restructures an ALIST (possibly received
+by POST request into a proper alist.
+
+Every key in the ALIST is converted from
+string to keyword."
+  (loop for (a . b) in alist
+     collect (cons (string->keyword a) b)))
+#+end_src
+
+#+RESULTS:
+: RESTRUCTURE-ALIST
+
+** Tomando o payload do Ningle
+
+Esta função exportada toma um objeto de requisição do Ningle e retorna
+o payload da requisição, na forma  de uma alist reestruturada para que
+as chaves sejam KEYWORDS.
+
+#+begin_src lisp
+(defun get-payload (request)
+  "Takes a Ningle REQUEST object and
+retrieves its payload (body parameters), as
+a restructured alist fitting the rest of the
+application."
+  (restructure-alist
+   (lack.request:request-body-parameters request)))
+#+end_src
+
+#+RESULTS:
+: GET-PAYLOAD
 
 ** Detectando se uma classe é realmente uma tabela
 
@@ -1296,6 +1427,9 @@ one of the declared tables for the application."
                    (stringp (cdr field))
                    (member (car field) fields)))))
 #+end_src
+
+#+RESULTS:
+: POST-VALID-DATA-P
 
 ** Obtendo campos de um DAO
 

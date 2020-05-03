@@ -6,7 +6,7 @@
  (:class qlot/source/ql:source-ql
   :initargs (:%version "2020-03-25")
   :version "ql-2020-03-25"))
-("snooze" .
+("ningle" .
  (:class qlot/source/ql:source-ql
   :initargs (:%version "2020-03-25")
   :version "ql-2020-03-25"))

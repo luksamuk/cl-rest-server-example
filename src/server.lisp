@@ -7,6 +7,8 @@ is running.")
 (defparameter *server-port* 9003
   "Default port for the server.")
 
+(defparameter *app* (make-instance 'ningle:<app>))
+
 (defun start-server ()
   "Initializes the server if it wasn't initialized yet.
 
@@ -14,7 +16,7 @@ Returns T if it succeeded in starting the server."
   (unless *server-handler*
     (db:db-connect)
     (setf *server-handler*
-          (clack:clackup (snooze:make-clack-app)
+          (clack:clackup *app*
                          :port *server-port*))
     t))
 

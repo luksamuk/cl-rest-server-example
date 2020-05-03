@@ -7,25 +7,62 @@ certain KEY.
 Returns the associated value or NIL if not found."
   `(cdr (assoc ,key ,alist)))
 
-(defmacro route-validate-json (payload)
-  "Validates a JSON payload from a network route.
+(defmacro route-prepare-response (response-object
+                                  &optional
+                                    (http-code 200)
+                                    (type "application/json"))
+  `(progn
+     (setf (lack.response:response-headers ,response-object)
+           (append
+            (lack.response:response-headers ,response-object)
+            (list :content-type ,type)))
+     (setf (lack.response:response-status ,response-object)
+           ,http-code)))
 
-If the payload is not a valid JSON object,
-automatically yields a 400 error with body
-'Malformed JSON' on the route."
-  (let ((payload-sym (gensym)))
-    `(let ((,payload-sym ,payload))
-       (handler-case (json:decode-json-from-string
-                      ,payload-sym)
-         (error (e)
-           (declare (ignore e))
-           (http-condition 400 "Malformed JSON: ~a" ,payload-sym))))))
+(defmacro http-response (response-object
+                         (&optional (http-code 200))
+                         &optional (format-string "OK")
+                         &rest rest)
+  `(progn (route-prepare-response ,response-object
+                                  ,http-code
+                                  "application/json")
+          (json:encode-json-to-string
+           (list
+            (cons :message
+                  (format nil ,format-string ,@rest))))))
 
 (defun symbol->keyword (symbol)
   "Transforms a specific SYMBOL into a keyword."
   (unless (symbolp symbol)
     (error "~a is not of type SYMBOL" symbol))
   (intern (format nil "~a" symbol) :keyword))
+
+(defun string->keyword (string)
+    "Transforms a specific STRING into a keyword.
+The string is trimmed and transformed to uppercase."
+  (unless (stringp string)
+    (error "~a is not of type STRING" string))
+  (intern (->> string
+               (string-trim '(#\Space #\Return))
+               string-upcase)
+          :keyword))
+
+(defun restructure-alist (alist)
+  "Restructures an ALIST (possibly received
+by POST request into a proper alist.
+
+Every key in the ALIST is converted from
+string to keyword."
+  (loop for (a . b) in alist
+     collect (cons (string->keyword a) b)))
+
+(defun get-payload (request)
+  "Takes a Ningle REQUEST object and
+retrieves its payload (body parameters), as
+a restructured alist fitting the rest of the
+application."
+  (restructure-alist
+   (lack.request:request-body-parameters request)))
 
 (defun class-table-p (class)
   "Tests whether a given CLASS is declared as a

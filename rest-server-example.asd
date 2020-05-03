@@ -5,7 +5,7 @@
     :version "0.0.5"
     :serial t
     :depends-on (#:cl-json
-                 #:snooze
+                 #:ningle
                  #:clack
                  #:mito
                  #:ironclad
@@ -16,8 +16,8 @@
     ((:file "package")
      (:module "src"
        :components ((:file "util")
-                    (:file "routes")
                     (:file "server")
+                    (:file "routes")
                     (:file "db")
                     (:module "models"
                       :components ((:file "user")))))))
