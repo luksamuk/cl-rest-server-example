@@ -22,12 +22,12 @@ all other project modules."))
 
 (defpackage #:rest-server.db
   (:nicknames #:db)
-  (:use #:cl #:mito #:cl-arrows)
+  (:use #:cl #:mito #:mito-auth #:cl-arrows)
   (:export #:db-connect
            #:db-disconnect
            #:into-json
            #:into-alist
-           #:from-alist
+           #:create-from-alist
            #:user)
   (:documentation
    "Utilities related to dealing with the database,

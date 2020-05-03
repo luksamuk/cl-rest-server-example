@@ -8,6 +8,7 @@
                  #:ningle
                  #:clack
                  #:mito
+                 #:mito-auth
                  #:ironclad
                  #:closer-mop
                  #:alexandria

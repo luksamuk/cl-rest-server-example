@@ -4,7 +4,8 @@ CREATE TABLE "user" (
     "birthdate" TIMESTAMPTZ NOT NULL,
     "address" VARCHAR(255) NOT NULL,
     "mail" VARCHAR(64) NOT NULL,
-    "pass" VARCHAR(64) NOT NULL,
+    "password_hash" CHAR(64) NOT NULL,
+    "password_salt" BYTEA NOT NULL,
     "created_at" TIMESTAMPTZ,
     "updated_at" TIMESTAMPTZ
 );

@@ -1,6 +1,6 @@
 (in-package #:rest-server.db)
 
-(deftable user ()
+(deftable user (has-secure-password)
   ((name :col-type (:varchar 80)
          :initarg :name
          :accessor user-name)
@@ -12,23 +12,21 @@
             :accessor user-address)
    (mail :col-type (:varchar 64)
          :initarg :mail
-         :accessor user-mail)
-   (pass :col-type (:varchar 64)
-         :initarg :pass
-         :accessor user-pass))
+         :accessor user-mail))
   (:unique-keys mail)
   (:documentation
    "Represents the `user` table on database."))
 
-(defmethod from-alist ((type (eql :user)) alist)
-  "Specializes FROM-ALIST for an entity which can
-be inserted on table `user`."
+(defmethod create-from-alist ((type (eql :user)) alist)
+  "Specializes CREATE-FROM-ALIST for an entity,
+inserting it on table `user`."
+  (format t "From alist: ~a~%" alist)
   (macrolet ((get-field (field)
                `(util:agetf ,field alist)))
-    (mito:make-dao-instance
+    (mito:create-dao
      'user
      :name (get-field :name)
      :birthdate (get-field :birthdate)
      :address (get-field :address)
      :mail (get-field :mail)
-     :pass (get-field :pass))))
+     :password (get-field :password))))

@@ -19,17 +19,23 @@ Returns the associated value or NIL if not found."
      (setf (lack.response:response-status ,response-object)
            ,http-code)))
 
-(defmacro http-response (response-object
-                         (&optional (http-code 200))
-                         &optional (format-string "OK")
-                         &rest rest)
-  `(progn (route-prepare-response ,response-object
+(defmacro http-response ((&optional (http-code 200))
+                         &body body)
+  `(progn (route-prepare-response ningle:*response*
                                   ,http-code
                                   "application/json")
           (json:encode-json-to-string
-           (list
-            (cons :message
-                  (format nil ,format-string ,@rest))))))
+           ,(cond ((null body)
+                   `(list '(:message . "OK")))
+                  ((consp (first body))
+                   `(quote (first body))) ; todo: subformats
+                  ((and (stringp (first body))
+                        (= (length body) 1))
+                   `(list (cons :message ,(first body))))
+                  (t
+                   `(list
+                     (cons :message
+                           (format nil ,@body))))))))
 
 (defun symbol->keyword (symbol)
   "Transforms a specific SYMBOL into a keyword."
@@ -111,7 +117,7 @@ FIND-CLASS function."
           (table-get-raw-columns class)))
 
 (defparameter *non-register-columns*
-  '(:created-at :updated-at :id)
+  '(:created-at :updated-at :id :password-hash :password-salt)
   "List of keyword columns which are not considered
 when creating a database entity from scratch.")
 
@@ -149,14 +155,20 @@ FIND-CLASS function."
   (mapcar (lambda (x) (string-downcase (format nil "~a" x)))
           (table-get-lispy-register-columns class)))
 
-(defun post-valid-data-p (class data)
+(defun post-valid-data-p (class data &key (has-password nil))
   "Tests whether some DATA received from a POST
 request is valid for creating an entity of a specific
 table CLASS.
 
+HAS-PASSWORD determines whether this data requires password
+authentication. If so, this predicate obligatorily checks for
+presence of a :password field.
+
 DATA must be an alist of values, and CLASS must be
 one of the declared tables for the application."
-  (let ((fields (table-get-lispy-register-columns class)))
+  (let ((fields (append
+                 (table-get-lispy-register-columns class)
+                 (if has-password '(:password) nil))))
     (loop for field in data
        always (and (consp field)
                    (stringp (cdr field))
@@ -175,8 +187,10 @@ is the value itself."
        for getter-sym =
          (case field
            (:id 'mito:object-id)
-           (:created-at 'mito:object-created-at)
-           (:updated-at 'mito:object-updated-at)
+           (:created-at    'mito:object-created-at)
+           (:updated-at    'mito:object-updated-at)
+           (:password-hash 'mito-auth:password-hash)
+           (:password-salt 'mito-auth:password-salt)
            (otherwise
             (intern (string-upcase
                      (concatenate 'string
@@ -199,7 +213,7 @@ keyword keys are in CENSORED-KEYS."
      collect element))
 
 (defparameter *censored-dao-fields*
-  '(:id :created-at :updated-at :pass)
+  '(:id :created-at :updated-at :password-hash :password-salt)
   "Lists fields which are not supposed to be show
 to someone attempting to retrieve a field.")
 
@@ -213,8 +227,8 @@ DAO must be a valid entity.
 The returned alist is a list of CONS pairs, where
 CAR is a keyword identifier for a field, and CDR
 is the value itself."
-  (filter-alist (dao->alist dao)
-                *censored-dao-fields*))
+  (->> *censored-dao-fields*
+       (filter-alist (dao->alist dao))))
 
 (defun dao->json (dao)
   "Takes an entity DAO and turns it into a

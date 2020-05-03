@@ -13,27 +13,52 @@
                (mito:find-dao 'db:user
                               :id (util:agetf :id params))))
           (if (null the-user)
-              (util:http-response *response* (404)
-                                  "Unknown user ID ~a"
-                                  (util:agetf :id params))
+              (util:http-response (404)
+                "Unknown user ID ~a"
+                (util:agetf :id params))
               (util:dao->json the-user)))))
 
 (setf (route *app* "/users" :method :POST)
       (lambda (params)
         (declare (ignore params))
         (let ((object (util:get-payload *request*)))
-          (if (not (util:post-valid-data-p 'db:user object))
-              (util:http-response *response* (400)
-                                  "Malformed user data")
+          (if (not (util:post-valid-data-p 'db:user object
+                                           :has-password t))
+              (util:http-response (400)
+                "Malformed user data")
               (handler-case
-                  (let ((user (db:from-alist :user object)))
-                    (mito:insert-dao user)
-                    (util:http-response *response* ())) ; OK
+                  (progn
+                    (db:create-from-alist :user object)
+                    (util:http-response ())) ; OK
                 (dbi.error:dbi-database-error (e)
                   (progn
                     (princ "Error: User already exists.")
                     (terpri)
                     (format t "Condition: ~a~%Payload: ~a" e object))
-                  (util:http-response
-                   *response* (400)
-                   "User already exists")))))))
+                  (util:http-response (400)
+                    "User already exists")))))))
+
+(setf (route *app* "/login" :method :POST)
+      (lambda (params)
+        (declare (ignore params))
+        (let ((object (util:get-payload *request*)))
+          (if (or (null (util:agetf :mail object))
+                  (null (util:agetf :password object)))
+              (util:http-response (400)
+                "Malformed login data")
+              (let ((dao
+                     (mito:find-dao
+                      'db:user
+                      :mail (util:agetf :mail object))))
+                (cond ((null dao)
+                       (util:http-response (404)
+                         "Unknown user"))
+                      ((mito-auth:auth
+                        dao
+                        (util:agetf :password object))
+                       (util:http-response ()
+                         `((:mail
+                            . ,(util:agetf :mail object))
+                           (:token . "")))) ; TODO: JWT token
+                      (t (util:http-response (403)
+                          "Wrong password"))))))))

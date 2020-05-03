@@ -69,22 +69,22 @@ them if necessary."
                      :birthdate (util:agetf :birthdate user)
                      :address (util:agetf :address user)
                      :mail (util:agetf :mail user)
-                     :pass (util:agetf :pass user))))))
+                     :password (util:agetf :password user))))))
     (seed-users '(((:name      . "Fulano da Silva")
                    (:birthdate . "1990-01-01 12:00:00-03")
                    (:address   . "Rua dos Bobos, 0")
                    (:mail      . "fulano@exemplo.com")
-                   (:pass      . "123456"))
+                   (:password  . "123456"))
                   ((:name      . "Ciclano da Silva")
                    (:birthdate . "1990-01-01 12:00:00-03")
                    (:address   . "Rua dos Bobos, 1")
                    (:mail      . "ciclano@exemplo.com")
-                   (:pass      . "123456"))))))
+                   (:password  . "123456"))))))
 
-(defgeneric from-alist (type-key alist)
+(defgeneric create-from-alist (type-key alist)
   (:documentation
    "Generates a database entity from the given
-ALIST.
+ALIST, effectively INSERTING it in the database.
 
 TYPE-KEY usually designates a keyword referring
 to a specific table, which will be dispatched by
