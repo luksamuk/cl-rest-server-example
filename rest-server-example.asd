@@ -21,4 +21,6 @@
                     (:file "routes")
                     (:file "db")
                     (:module "models"
-                      :components ((:file "user")))))))
+                      :components ((:file "user")))
+                    (:module "controllers"
+                      :components ((:file "user-controller")))))))

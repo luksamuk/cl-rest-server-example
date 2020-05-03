@@ -27,7 +27,7 @@ all other project modules."))
            #:db-disconnect
            #:into-json
            #:into-alist
-           #:create-from-alist
+           #:control-store
            #:user)
   (:documentation
    "Utilities related to dealing with the database,

@@ -45,6 +45,8 @@
   - [[#modelos][Modelos]]
     - [[#usuário][Usuário]]
   - [[#controladores][Controladores]]
+    - [[#operações-genéricas][Operações genéricas]]
+    - [[#usuário-1][Usuário]]
 - [[#utilitários][Utilitários]]
   - [[#obtendo-elemento-de-uma-alist-ao-usar-macros][Obtendo elemento de uma alist ao usar macros]]
   - [[#preparando-uma-resposta-em-json-do-ningle][Preparando uma resposta em JSON do Ningle]]
@@ -294,7 +296,9 @@ que define.
                     (:file "routes")
                     (:file "db")
                     (:module "models"
-                      :components ((:file "user")))))))
+                      :components ((:file "user")))
+                    (:module "controllers"
+                      :components ((:file "user-controller")))))))      
 #+end_src
 
 ** Definição dos pacotes
@@ -351,7 +355,7 @@ o que também inclui /models/ e /controllers/.
            #:db-disconnect
            #:into-json
            #:into-alist
-           #:create-from-alist
+           #:control-store
            #:user)
   (:documentation
    "Utilities related to dealing with the database,
@@ -601,7 +605,8 @@ mensagem que indica dados de usuário mal-formados.
                 "Malformed user data")
               (handler-case
                   (progn
-                    (db:create-from-alist :user object)
+                    (db:control-store :user object)
+                    ;;(db:control-store :user *request* *response*)
                     (util:http-response ())) ; OK
                 (dbi.error:dbi-database-error (e)
                   (progn
@@ -1061,39 +1066,10 @@ dados. Atualmente, apenas dois usuários são inseridos.
 #+end_src
 
 ** Modelos
-:PROPERTIES:
-:header-args:lisp: :tangle src/db.lisp
-:END:
 
 As  próximas  definições  tratam  de /modelos/  da  aplicação,  que  são
 correspondentes também  a tabelas da  mesma. Portanto, cada  um destes
 modelos encontra-se em um arquivo próprio.
-
-Primeiramente, definiremos algumas  operações genéricas que entendemos
-que quaisquer modelos necessitem definir.
-
-Um  método  ~create-from-alist~ toma  uma  certa  chave de  objeto  (por
-exemplo, ~:user~) e uma alist contendo  dados variados para que o objeto
-seja criado.   Este método fica  responsável por selecionar  *apenas as
-chaves pertinentes*,  ou seja, a  alist poderia  ter mais dados  do que
-necessário,  mas   o  processo   de  criação   do  objeto   não  seria
-prejudicado. Portanto, é necessário defini-lo manualmente por tabela.
-
-A execução de ~create-from-alist~ efetivamente  deverá *criar o objeto no
-banco de dados*.
-
-#+begin_src lisp
-(defgeneric create-from-alist (type-key alist)
-  (:documentation
-   "Generates a database entity from the given
-ALIST, effectively INSERTING it in the database.
-
-TYPE-KEY usually designates a keyword referring
-to a specific table, which will be dispatched by
-value. The ALIST must be populated with
-information compatible with the referred table's
-obligatory informations for entity creation."))
-#+end_src
 
 *** Usuário
 :PROPERTIES:
@@ -1145,16 +1121,105 @@ tabela do usuário estão listados a seguir:
 É interessante  lembrar que  uma tabela  do ~mito~ nada  mais é  que uma
 classe, cujo campo ~:metaclass~ equivale a ~mito:dao-table-class~.
 
-**** Métodos
+** Controladores
+
+# TODO: Mover para o próprio arquivo
+
+As próximas definições  tratam dos /controllers/ da  aplicação, ou seja,
+elementos que reforçam as regras  de negócio da aplicação. Começaremos
+definindo  operações  genéricas  que  serão  implementadas  para  cada
+controlador.
+
+*** Operações genéricas
+:PROPERTIES:
+:header-args:lisp: :tangle src/db.lisp
+:END:
+
+Primeiramente, definiremos algumas  operações genéricas que entendemos
+que quaisquer modelos necessitem definir.
+
+**** Index
+
+# TODO: Relativo a listagem de todas as entidades
+
+A documentar.
+
+#+begin_src lisp
+(defgeneric control-index (type-key request response))
+#+end_src
+
+**** Show
+
+# TODO: Relativo a listagem de uma única entidade
+
+A documentar.
+
+#+begin_src lisp
+(defgeneric control-show (type-key request response))
+#+end_src
+
+**** Store
+
+Um  método  ~control-store~ toma  uma  certa  chave de  objeto  (por
+exemplo, ~:user~) e uma alist contendo  dados variados para que o objeto
+seja criado.   Este método fica  responsável por selecionar  *apenas as
+chaves pertinentes*,  ou seja, a  alist poderia  ter mais dados  do que
+necessário,  mas   o  processo   de  criação   do  objeto   não  seria
+prejudicado. Portanto, é necessário defini-lo manualmente por tabela.
+
+A execução de ~control-store~ efetivamente  deverá *criar o objeto no
+banco de dados*.
+
+# TODO: Alterar alist e usar a requisição diretamente
+
+#+begin_src lisp
+(defgeneric control-store (type-key alist)
+  "Generates a database entity from the given
+ALIST, effectively INSERTING it in the database.
+
+TYPE-KEY usually designates a keyword referring
+to a specific table, which will be dispatched by
+value. The ALIST must be populated with
+information compatible with the referred table's
+obligatory informations for entity creation.")
+#+end_src
+
+**** Update
+
+# TODO: Relativo a alteração de campos de um usuário
+
+A documentar.
+
+#+begin_src lisp
+(defgeneric control-update (type-key request response))
+#+end_src
+
+**** Delete
+
+# TODO: Relativo a remoção de um usuário
+
+A documentar.
+
+#+begin_src lisp
+(defgeneric control-delete (type-key request response))
+#+end_src
+
+*** Usuário
+:PROPERTIES:
+:header-args:lisp: :tangle src/controllers/user-controller.lisp
+:END:
+
+#+begin_src lisp
+(in-package #:rest-server.db)
+#+end_src
 
 Definimos  o método  para construção  de um  usuário a  partir de  uma
 ~alist~.
 
 #+begin_src lisp
-(defmethod create-from-alist ((type (eql :user)) alist)
-  "Specializes CREATE-FROM-ALIST for an entity,
+(defmethod control-store ((type (eql :user)) alist)
+  "Specializes CONTROL-STORE for an entity,
 inserting it on table `user`."
-  (format t "From alist: ~a~%" alist)
   (macrolet ((get-field (field)
                `(util:agetf ,field alist)))
     (mito:create-dao
@@ -1165,13 +1230,6 @@ inserting it on table `user`."
      :mail (get-field :mail)
      :password (get-field :password))))
 #+end_src
-
-#+RESULTS:
-: #<STANDARD-METHOD REST-SERVER.DB:FROM-ALIST ((EQL :USER) T) {1007399093}>
-
-** Controladores
-
-A fazer.
 
 * Utilitários
 :PROPERTIES:

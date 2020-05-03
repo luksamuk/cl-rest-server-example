@@ -16,17 +16,3 @@
   (:unique-keys mail)
   (:documentation
    "Represents the `user` table on database."))
-
-(defmethod create-from-alist ((type (eql :user)) alist)
-  "Specializes CREATE-FROM-ALIST for an entity,
-inserting it on table `user`."
-  (format t "From alist: ~a~%" alist)
-  (macrolet ((get-field (field)
-               `(util:agetf ,field alist)))
-    (mito:create-dao
-     'user
-     :name (get-field :name)
-     :birthdate (get-field :birthdate)
-     :address (get-field :address)
-     :mail (get-field :mail)
-     :password (get-field :password))))

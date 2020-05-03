@@ -28,7 +28,8 @@
                 "Malformed user data")
               (handler-case
                   (progn
-                    (db:create-from-alist :user object)
+                    (db:control-store :user object)
+                    ;;(db:control-store :user *request* *response*)
                     (util:http-response ())) ; OK
                 (dbi.error:dbi-database-error (e)
                   (progn

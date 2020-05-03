@@ -81,13 +81,20 @@ them if necessary."
                    (:mail      . "ciclano@exemplo.com")
                    (:password  . "123456"))))))
 
-(defgeneric create-from-alist (type-key alist)
-  (:documentation
-   "Generates a database entity from the given
+(defgeneric control-index (type-key request response))
+
+(defgeneric control-show (type-key request response))
+
+(defgeneric control-store (type-key alist)
+  "Generates a database entity from the given
 ALIST, effectively INSERTING it in the database.
 
 TYPE-KEY usually designates a keyword referring
 to a specific table, which will be dispatched by
 value. The ALIST must be populated with
 information compatible with the referred table's
-obligatory informations for entity creation."))
+obligatory informations for entity creation.")
+
+(defgeneric control-update (type-key request response))
+
+(defgeneric control-delete (type-key request response))
