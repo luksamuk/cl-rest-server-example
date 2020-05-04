@@ -1,11 +1,12 @@
 (in-package #:rest-server.db)
 
-(defmethod control-index ((type (eql :user)) req res)
+(defmethod control-index ((type (eql :user)) &optional params)
+  (declare (ignore params))
   (->> (mito:select-dao 'db:user)
        (mapcar #'util:dao->filtered-alist)
        json:encode-json-to-string))
 
-(defmethod control-show ((type (eql :user)) params res)
+(defmethod control-show ((type (eql :user)) &optional params)
   (let ((user (mito:find-dao
                'db:user
                :id (util:agetf :id params))))
@@ -15,8 +16,9 @@
           (util:agetf :id params))
         (util:dao->json user))))
 
-(defmethod control-store ((type (eql :user)) req res)
-  (let ((payload (util:get-payload req)))
+(defmethod control-store ((type (eql :user)) &optional params)
+  (declare (ignore params))
+  (let ((payload (util:get-payload ningle:*request*)))
     (if (not (util:post-valid-data-p 'db:user payload
                                      :has-password t))
         (util:http-response (400)

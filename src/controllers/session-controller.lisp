@@ -1,7 +1,8 @@
 (in-package #:rest-server.db)
 
-(defmethod control-store ((type (eql :session)) req res)
-  (let* ((payload (util:get-payload req))
+(defmethod control-store ((type (eql :session)) &optional params)
+  (declare (ignore params))
+  (let* ((payload (util:get-payload ningle:*request*))
          (mail (util:agetf :mail payload))
          (pass (util:agetf :password payload)))
     (if (or (null mail) (null pass))

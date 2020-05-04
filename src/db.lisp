@@ -81,12 +81,12 @@ them if necessary."
                    (:mail      . "ciclano@exemplo.com")
                    (:password  . "123456"))))))
 
-(defgeneric control-index (type-key request response))
+(defgeneric control-index (type-key &optional params))
 
-(defgeneric control-show (type-key request response))
+(defgeneric control-show (type-key &optional params))
 
-(defgeneric control-store (type-key request response))
+(defgeneric control-store (type-key &optional params))
 
-(defgeneric control-update (type-key request response))
+(defgeneric control-update (type-key &optional params))
 
-(defgeneric control-delete (type-key request response))
+(defgeneric control-delete (type-key &optional params))

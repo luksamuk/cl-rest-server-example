@@ -525,7 +525,7 @@ que retorna todos os usuários cadastrados.
 (setf (route *app* "/users" :method :GET)
       (lambda (params)
         (declare (ignore params))
-        (db:control-index :user *request* *response*)))
+        (db:control-index :user)))
 #+end_src
 
 Finalmente,  estabelecemos   uma  rota   para  a  requisição   =GET=  em
@@ -540,7 +540,7 @@ existe no banco de dados, e sob um código HTTP 404 (não encontrado).
 #+begin_src lisp
 (setf (route *app* "/users/:id" :method :GET)
       (lambda (params)
-        (db:control-show :user params *response*)))
+        (db:control-show :user params)))
 #+end_src
 
 #+RESULTS:
@@ -556,7 +556,7 @@ controlador do usuário.
 (setf (route *app* "/users" :method :POST)
       (lambda (params)
         (declare (ignore params))
-        (db:control-store :user *request* *response*)))
+        (db:control-store :user)))
 #+end_src
 
 #+RESULTS:
@@ -574,7 +574,7 @@ As regras de negócio são tratadas no controlador de sessão.
 (setf (route *app* "/login" :method :POST)
       (lambda (params)
         (declare (ignore params))
-        (db:control-store :session *request* *response*)))
+        (db:control-store :session)))
 #+end_src
 
 * Banco de dados
@@ -1074,7 +1074,7 @@ A requisição recebida  também poderá ter alguma  informação relativa a
 paginação, diminuindo a carga do servidor.
 
 #+begin_src lisp
-(defgeneric control-index (type-key request response))
+(defgeneric control-index (type-key &optional params))
 #+end_src
 
 **** Show
@@ -1087,7 +1087,7 @@ entidade,  que   deverá  ter   seu  parâmetro  informado   através  da
 requisição.
 
 #+begin_src lisp
-(defgeneric control-show (type-key request response))
+(defgeneric control-show (type-key &optional params))
 #+end_src
 
 **** Store
@@ -1103,7 +1103,7 @@ de dados. Por exemplo, em um controlador de sessão, podemos utilizar o
 método /store/ para realizar a autenticação do usuário.
 
 #+begin_src lisp
-(defgeneric control-store (type-key request response))
+(defgeneric control-store (type-key &optional params))
 #+end_src
 
 **** Update
@@ -1113,7 +1113,7 @@ método /store/ para realizar a autenticação do usuário.
 A documentar.
 
 #+begin_src lisp
-(defgeneric control-update (type-key request response))
+(defgeneric control-update (type-key &optional params))
 #+end_src
 
 **** Delete
@@ -1123,7 +1123,7 @@ A documentar.
 A documentar.
 
 #+begin_src lisp
-(defgeneric control-delete (type-key request response))
+(defgeneric control-delete (type-key &optional params))
 #+end_src
 
 *** Controlador de Usuário
@@ -1148,7 +1148,8 @@ em notação JSON.
 # TODO: Exigir ou permitir paginação
 
 #+begin_src lisp
-(defmethod control-index ((type (eql :user)) req res)
+(defmethod control-index ((type (eql :user)) &optional params)
+  (declare (ignore params))
   (->> (mito:select-dao 'db:user)
        (mapcar #'util:dao->filtered-alist)
        json:encode-json-to-string))
@@ -1169,7 +1170,7 @@ acesso,  recebemos  estes  parâmetros   por  argumento,  ao  invés  da
 requisição em si.
 
 #+begin_src lisp
-(defmethod control-show ((type (eql :user)) params res)
+(defmethod control-show ((type (eql :user)) &optional params)
   (let ((user (mito:find-dao
                'db:user
                :id (util:agetf :id params))))
@@ -1197,8 +1198,9 @@ contrário, é  retornada uma  mensagem de sucesso  em JSON,  cujo campo
 ~"message"~ contém a string ~"OK"~.
 
 #+begin_src lisp
-(defmethod control-store ((type (eql :user)) req res)
-  (let ((payload (util:get-payload req)))
+(defmethod control-store ((type (eql :user)) &optional params)
+  (declare (ignore params))
+  (let ((payload (util:get-payload ningle:*request*)))
     (if (not (util:post-valid-data-p 'db:user payload
                                      :has-password t))
         (util:http-response (400)
@@ -1221,7 +1223,7 @@ contrário, é  retornada uma  mensagem de sucesso  em JSON,  cujo campo
 #+end_src
 
 #+RESULTS:
-: #<STANDARD-METHOD REST-SERVER.DB:CONTROL-STORE ((EQL :USER) T T) {1006C1B623}>
+: #<STANDARD-METHOD REST-SERVER.DB:CONTROL-STORE ((EQL :USER)) {1002B675C3}>
 
 *** Controlador de Sessão
 :PROPERTIES:
@@ -1254,8 +1256,9 @@ encontrado ou não existe.
 # TODO: Gerar token JWT e documentar o retorno
 
 #+begin_src lisp
-(defmethod control-store ((type (eql :session)) req res)
-  (let* ((payload (util:get-payload req))
+(defmethod control-store ((type (eql :session)) &optional params)
+  (declare (ignore params))
+  (let* ((payload (util:get-payload ningle:*request*))
          (mail (util:agetf :mail payload))
          (pass (util:agetf :password payload)))
     (if (or (null mail) (null pass))
@@ -1276,7 +1279,7 @@ encontrado ou não existe.
 #+end_src
 
 #+RESULTS:
-: #<STANDARD-METHOD REST-SERVER.DB:CONTROL-STORE ((EQL :SESSION) T T) {1005548213}>
+: #<STANDARD-METHOD REST-SERVER.DB:CONTROL-STORE ((EQL :SESSION)) {1002E1F6C3}>
 
 * Utilitários
 :PROPERTIES:
