@@ -3,20 +3,11 @@
 (setf (route *app* "/users" :method :GET)
       (lambda (params)
         (declare (ignore params))
-        (->> (mito:select-dao 'db:user)
-             (mapcar #'util:dao->filtered-alist)
-             json:encode-json-to-string)))
+        (db:control-index :user *request* *response*)))
 
 (setf (route *app* "/users/:id" :method :GET)
       (lambda (params)
-        (let ((the-user
-               (mito:find-dao 'db:user
-                              :id (util:agetf :id params))))
-          (if (null the-user)
-              (util:http-response (404)
-                "Unknown user ID ~a"
-                (util:agetf :id params))
-              (util:dao->json the-user)))))
+        (db:control-show :user params *response*)))
 
 (setf (route *app* "/users" :method :POST)
       (lambda (params)

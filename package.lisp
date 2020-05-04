@@ -27,7 +27,11 @@ all other project modules."))
            #:db-disconnect
            #:into-json
            #:into-alist
+           #:control-index
+           #:control-show
            #:control-store
+           #:control-update
+           #:control-delete
            #:user)
   (:documentation
    "Utilities related to dealing with the database,

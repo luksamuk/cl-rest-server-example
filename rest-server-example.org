@@ -1,4 +1,4 @@
-#+TITLE: Servidor REST em Common Lisp
+#+TITLE:     Servidor REST em Common Lisp
 #+LANGUAGE:  pt_BR
 #+AUTHOR:    Lucas S. Vieira
 #+EMAIL:     lucasvieira@protonmail.com
@@ -46,8 +46,8 @@
     - [[#usuário][Usuário]]
   - [[#controladores][Controladores]]
     - [[#operações-genéricas][Operações genéricas]]
-    - [[#usuário-1][Usuário]]
-    - [[#sessão][Sessão]]
+    - [[#controlador-de-usuário][Controlador de Usuário]]
+    - [[#controlador-de-sessão][Controlador de Sessão]]
 - [[#utilitários][Utilitários]]
   - [[#obtendo-elemento-de-uma-alist-ao-usar-macros][Obtendo elemento de uma alist ao usar macros]]
   - [[#preparando-uma-resposta-em-json-do-ningle][Preparando uma resposta em JSON do Ningle]]
@@ -357,7 +357,11 @@ o que também inclui /models/ e /controllers/.
            #:db-disconnect
            #:into-json
            #:into-alist
+           #:control-index
+           #:control-show
            #:control-store
+           #:control-update
+           #:control-delete
            #:user)
   (:documentation
    "Utilities related to dealing with the database,
@@ -511,21 +515,18 @@ informações, consulte [[https://github.com/fukamachi/ningle][este repositório
 
 ** Listagem de usuários
 
+# TODO: Refatorar documentação
+
 Ningle  possibilita  que  criemos  uma definição  de  rota  para  cada
 caso. Primeiramente, definimos uma rota para requisição =GET= em =/users=,
-que retorna um JSON com todos os usuários cadastrados.
+que retorna todos os usuários cadastrados.
 
 #+begin_src lisp
 (setf (route *app* "/users" :method :GET)
       (lambda (params)
         (declare (ignore params))
-        (->> (mito:select-dao 'db:user)
-             (mapcar #'util:dao->filtered-alist)
-             json:encode-json-to-string)))
+        (db:control-index :user *request* *response*)))
 #+end_src
-
-#+RESULTS:
-: #<FUNCTION (LAMBDA (PARAMS)) {5335D44B}>
 
 Finalmente,  estabelecemos   uma  rota   para  a  requisição   =GET=  em
 ~/users/:id~, onde  ~:id~ representa  um parâmetro  esperado na  rota, que
@@ -535,21 +536,15 @@ Caso a  ID do usuário em  questão seja inválida, retornamos  um objeto
 JSON com  um único  campo de  mensagem, informando  que aquela  ID não
 existe no banco de dados, e sob um código HTTP 404 (não encontrado).
 
+
 #+begin_src lisp
 (setf (route *app* "/users/:id" :method :GET)
       (lambda (params)
-        (let ((the-user
-               (mito:find-dao 'db:user
-                              :id (util:agetf :id params))))
-          (if (null the-user)
-              (util:http-response (404)
-                "Unknown user ID ~a"
-                (util:agetf :id params))
-              (util:dao->json the-user)))))
+        (db:control-show :user params *response*)))
 #+end_src
 
 #+RESULTS:
-: #<FUNCTION (LAMBDA (PARAMS)) {533535DB}>
+: #<FUNCTION (LAMBDA (PARAMS)) {53352AEB}>
 
 ** Registrar usuário
 
@@ -1070,9 +1065,13 @@ que quaisquer modelos necessitem definir.
 
 **** Index
 
-# TODO: Relativo a listagem de todas as entidades
+O método  /index/ está  diretamente relacionado à  listagem de  todas as
+entidades de uma tabela em específico. Em outras palavras, este método
+deve retornar uma resposta contendo toda  a lista de entidades para um
+determinado modelo, por exemplo.
 
-A documentar.
+A requisição recebida  também poderá ter alguma  informação relativa a
+paginação, diminuindo a carga do servidor.
 
 #+begin_src lisp
 (defgeneric control-index (type-key request response))
@@ -1082,7 +1081,10 @@ A documentar.
 
 # TODO: Relativo a listagem de uma única entidade
 
-A documentar.
+O método /show/ é  parecido com o /index/. Todavia, ao  invés de lidar com
+todas as  entidades em questão,  existe apenas para mostrar  uma única
+entidade,  que   deverá  ter   seu  parâmetro  informado   através  da
+requisição.
 
 #+begin_src lisp
 (defgeneric control-show (type-key request response))
@@ -1090,10 +1092,15 @@ A documentar.
 
 **** Store
 
-# TODO:  Relativo a  cadastro ou  operações com  uma entidade,  ou com
-# elementos que podem não ser entidades.
+O método /store/ está diretamente relacionado à criação de uma entidade,
+no sentido de sua persistência. Por  exemplo, o cadastro de um usuário
+deve ser  feito pela  ação /store/  de seu  controlador, que  entrará em
+contato com  seu respectivo /model/  e avaliará os dados  recebidos pela
+requisição para que isto seja feito.
 
-A documentar.
+Este método também  não precisa ser apenas  relacionado a persistência
+de dados. Por exemplo, em um controlador de sessão, podemos utilizar o
+método /store/ para realizar a autenticação do usuário.
 
 #+begin_src lisp
 (defgeneric control-store (type-key request response))
@@ -1119,7 +1126,7 @@ A documentar.
 (defgeneric control-delete (type-key request response))
 #+end_src
 
-*** Usuário
+*** Controlador de Usuário
 :PROPERTIES:
 :header-args:lisp: :tangle src/controllers/user-controller.lisp
 :END:
@@ -1128,9 +1135,54 @@ A documentar.
 (in-package #:rest-server.db)
 #+end_src
 
+Os  métodos  definidos  a  seguir  dizem  respeito  ao  /controller/  de
+Usuário.  Estes  métodos  são  diretamente  responsáveis  pelas  rotas
+relacionadas a gerenciamento de usuários.
+
+**** Index
+
+O  método /index/  é capaz  de  mostrar todos  os usuários  do banco  de
+dados. Estes usuários são retornados na  forma de um vetor de objetos,
+em notação JSON.
+
+# TODO: Exigir ou permitir paginação
+
+#+begin_src lisp
+(defmethod control-index ((type (eql :user)) req res)
+  (->> (mito:select-dao 'db:user)
+       (mapcar #'util:dao->filtered-alist)
+       json:encode-json-to-string))
+#+end_src
+
+#+RESULTS:
+: #<STANDARD-METHOD REST-SERVER.DB:CONTROL-INDEX ((EQL :USER) T T) {10070E5043}>
+
+**** Show
+
+O método /show/ é  capaz de mostrar os dados de  um único usuário. Estes
+dados são retornados  em forma de JSON. Caso o  usuário em questão não
+exista, a requisição falhará sob um erro HTTP 404, informando que o ID
+requisitado não existe.
+
+Como o  ID do  usuário é  informado através dos  parâmetros da  URL de
+acesso,  recebemos  estes  parâmetros   por  argumento,  ao  invés  da
+requisição em si.
+
+#+begin_src lisp
+(defmethod control-show ((type (eql :user)) params res)
+  (let ((user (mito:find-dao
+               'db:user
+               :id (util:agetf :id params))))
+    (if (null user)
+        (util:http-response (404)
+          "Unknown user ID ~a"
+          (util:agetf :id params))
+        (util:dao->json user))))
+#+end_src
+
 **** Store
 
-Este método é chamado por uma requisição ~POST~ em ~/users~.
+O método /store/ cadastra um novo usuário no banco de dados.
 
 O  corpo da  requisição espera  pelos campos  necessários para  que um
 usuário seja registrado no sistema.
@@ -1171,7 +1223,7 @@ contrário, é  retornada uma  mensagem de sucesso  em JSON,  cujo campo
 #+RESULTS:
 : #<STANDARD-METHOD REST-SERVER.DB:CONTROL-STORE ((EQL :USER) T T) {1006C1B623}>
 
-*** Sessão
+*** Controlador de Sessão
 :PROPERTIES:
 :header-args:lisp: :tangle src/controllers/session-controller.lisp
 :END:
@@ -1180,9 +1232,26 @@ contrário, é  retornada uma  mensagem de sucesso  em JSON,  cujo campo
 (in-package #:rest-server.db)
 #+end_src
 
+Os  métodos  definidos  a  seguir  dizem  respeito  ao  /controller/  de
+Sessão.  Sessões não  existem  enquanto entidades  em  nosso banco  de
+dados,  sendo gerenciadas  principalmente por  tokens JWT  que expiram
+após algum tempo.
+
 **** Store
 
-# TODO: Gerar token JWT.
+O método /store/ cria uma nova sessão para um usuário informado no corpo
+da requisição.
+
+O  corpo  deverá  informar  os   elementos  ~mail~  e  ~password~  para  o
+usuário. Caso estes elementos não sejam informados, será retornada uma
+resposta  HTTP 400,  dizendo que  as  informações de  login não  estão
+completas.
+
+Caso o usuário  não possa ser encontrado por seu  ~mail~, será retornada
+uma  nova  resposta  HTTP  404,  informando  que  o  usuário  não  foi
+encontrado ou não existe.
+
+# TODO: Gerar token JWT e documentar o retorno
 
 #+begin_src lisp
 (defmethod control-store ((type (eql :session)) req res)
