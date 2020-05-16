@@ -3,3 +3,7 @@
 *.#*
 .qlot/
 .projectile
+_minted-*/
+*.pyg
+*.tex
+*.pdf
