@@ -3,8 +3,10 @@
 (defparameter *jwt-method* :hs256)
 
 (defparameter *jwt-salt*
-  (ironclad:ascii-string-to-byte-array
+  (ironclad:hex-string-to-byte-array
    "04f79366645b309340cf5c8c308e780c6db9287d9bdc7664d96649"))
+
+(defparameter *jwt-expires-in* '((:days . 7)))
 
 (defun gen-jwt-creation-time ()
   "Retrieve current time as time difference between now
@@ -16,6 +18,8 @@ JavaScript conformance."
       (* 1000)))
 
 (defun dbg-format-jwt-time (time)
+  "Takes a time generated for any claim of a JWT and
+formats it into a string, for debug purposes."
   (let ((time (-> (encode-universal-time 0 0 0 1 1 1970 0)
                   (* 1000)
                   (+ time))))
@@ -44,9 +48,10 @@ associated value must be a number."
      into extra-ms
      finally (return (+ creation-time extra-ms))))
 
-(defparameter *jwt-expires-in* '((:days . 7)))
-
 (defun gen-session-data (extra-data)
+  "Generates an alist containing a JWT with issue
+time and expiration time, plus some extra data that
+is also signed and inserted into the token itself."
   (let* ((creation-time (gen-jwt-creation-time))
          (expiry-time   (gen-jwt-expiration-time
                          creation-time
@@ -76,11 +81,23 @@ associated value must be a number."
         (values
          (and (numberp iat)
               (numberp exp)
-              (let ((diff (- exp iat)))
+              (let ((diff (- exp iat))
+                    (currt (gen-jwt-creation-time)))
                 (not (minusp diff))
-                (not (zerop diff)))
-              (> exp (gen-jwt-creation-time)))
+                (not (zerop diff))
+                (< iat exp)
+                (< iat currt)
+                (> exp currt)))
          token-data))))
+
+(defun request-authorized-p (bearer-token)
+  (let ((parts (split-sequence #\space bearer-token)))
+    (and (= 2 (length parts))
+         (string= (first parts) "Bearer")
+         (multiple-value-bind (result token-data)
+             (jwt-valid-p (second parts))
+           (or (and result (values t token-data))
+               (values nil nil))))))
 
 (defmethod control-index :around (type &optional params)
   (declare (ignore type params))

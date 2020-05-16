@@ -81,12 +81,25 @@ them if necessary."
                    (:mail      . "ciclano@exemplo.com")
                    (:password  . "123456"))))))
 
-(defgeneric control-index (type-key &optional params))
+(defgeneric control-index (type-key &optional params)
+  (:documentation "Specifies an operation of listing all entities
+for a specific table or business rule. May require some
+parameters related to pagination to reduce server load."))
 
-(defgeneric control-show (type-key &optional params))
+(defgeneric control-show (type-key &optional params)
+  (:documentation "Specifies an operation of listing a single
+entity for a specific table or business rule."))
 
-(defgeneric control-store (type-key &optional params))
+(defgeneric control-store (type-key &optional params)
+  (:documentation "Specifies an operation for creating a new
+entity or performing a creation operation for a
+specific table or business rule."))
 
-(defgeneric control-update (type-key &optional params))
+(defgeneric control-update (type-key &optional params)
+  (:documentation "Specifies an operation for changing a specific
+entity or performing an update of an entity from a
+table or business rule."))
 
-(defgeneric control-delete (type-key &optional params))
+(defgeneric control-delete (type-key &optional params)
+  (:documentation "Specifies an operation for removing a specific
+entity from a table or from a business rule."))

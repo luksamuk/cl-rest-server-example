@@ -2,7 +2,7 @@
 #+LANGUAGE:  pt_BR
 #+AUTHOR:    Lucas S. Vieira
 #+EMAIL:     lucasvieira@protonmail.com
-#+STARTUP:   inlineimages content latexpreview
+#+STARTUP:   inlineimages content latexpreview shrink
 #+PROPERTY:  header-args:lisp :noweb strip-export :eval no :tangle no :results silent
 #+OPTIONS:   toc:nil title:nil
 
@@ -46,8 +46,8 @@
     - [[#usuário][Usuário]]
   - [[#controladores][Controladores]]
     - [[#operações-genéricas][Operações genéricas]]
-    - [[#controlador-de-usuário][Controlador de Usuário]]
     - [[#autenticação-jwt][Autenticação JWT]]
+    - [[#controlador-de-usuário][Controlador de Usuário]]
     - [[#controlador-de-sessão][Controlador de Sessão]]
 - [[#utilitários][Utilitários]]
   - [[#obtendo-elemento-de-uma-alist-ao-usar-macros][Obtendo elemento de uma alist ao usar macros]]
@@ -495,14 +495,21 @@ Esta é a relação de métodos e rotas da aplicação, bem como as entradas
 e  saídas esperadas  mediante  sucesso. Absolutamente  todas as  rotas
 recebem e enviam JSON em forma de /string/.
 
-# TODO: Mudar isso quando já  tivermos autenticação (requerer token em
-# todas as rotas acessíveis apenas para usuários).
+# TODO: Mudar descrição de autenticação
+Todas as rotas  requerem um Bearer Token de autenticação adicionado
+ao /cabeçalho/  da requisição,  sob a  chave ~authentication~.  Este token
+deve ser  um JSON Web Token,  que será obtido como  resposta durante a
+autenticação.
+
+A  única  requisição que  foge  a  esta regra  é  ~POST  /login~, que  é
+responsável  por   gerar  o  JWT   a  ser  utilizado   em  requisições
+subsequentes.
 
 |--------+------------------+-----------------------------------+------------------------------------|
 | <9>    | <16>             | <16>                              | <16>                               |
 | Método | Rota             | Entrada                           | Saída                              |
 |--------+------------------+-----------------------------------+------------------------------------|
-| POST   | ~/login~           | E-mail e senha do usuário         | Token JWT de autenticação          |
+| POST   | ~/login~           | E-mail e senha do usuário         | JSON Web Token de autenticação     |
 | GET    | ~/users~           | -                                 | Lista de usuários.                 |
 | GET    | ~/users/:id~       | -                                 | Dados de um usuário.               |
 | GET    | ~/activ~           | -                                 | Lista de atividades.               |
@@ -520,8 +527,6 @@ informações, consulte [[https://github.com/fukamachi/ningle][este repositório
 # TODO: Implementar rotas faltantes.
 
 ** Listagem de usuários
-
-# TODO: Refatorar documentação
 
 Ningle  possibilita  que  criemos  uma definição  de  rota  para  cada
 caso. Primeiramente, definimos uma rota para requisição =GET= em =/users=,
@@ -1054,8 +1059,6 @@ classe, cujo campo ~:metaclass~ equivale a ~mito:dao-table-class~.
 
 ** Controladores
 
-# TODO: Mover para o próprio arquivo
-
 As próximas definições  tratam dos /controllers/ da  aplicação, ou seja,
 elementos que reforçam as regras  de negócio da aplicação. Começaremos
 definindo  operações  genéricas  que  serão  implementadas  para  cada
@@ -1080,12 +1083,13 @@ A requisição recebida  também poderá ter alguma  informação relativa a
 paginação, diminuindo a carga do servidor.
 
 #+begin_src lisp
-(defgeneric control-index (type-key &optional params))
+(defgeneric control-index (type-key &optional params)
+  (:documentation "Specifies an operation of listing all entities
+for a specific table or business rule. May require some
+parameters related to pagination to reduce server load."))
 #+end_src
 
 **** Show
-
-# TODO: Relativo a listagem de uma única entidade
 
 O método /show/ é  parecido com o /index/. Todavia, ao  invés de lidar com
 todas as  entidades em questão,  existe apenas para mostrar  uma única
@@ -1093,7 +1097,9 @@ entidade,  que   deverá  ter   seu  parâmetro  informado   através  da
 requisição.
 
 #+begin_src lisp
-(defgeneric control-show (type-key &optional params))
+(defgeneric control-show (type-key &optional params)
+  (:documentation "Specifies an operation of listing a single
+entity for a specific table or business rule."))
 #+end_src
 
 **** Store
@@ -1109,27 +1115,383 @@ de dados. Por exemplo, em um controlador de sessão, podemos utilizar o
 método /store/ para realizar a autenticação do usuário.
 
 #+begin_src lisp
-(defgeneric control-store (type-key &optional params))
+(defgeneric control-store (type-key &optional params)
+  (:documentation "Specifies an operation for creating a new
+entity or performing a creation operation for a
+specific table or business rule."))
 #+end_src
 
 **** Update
 
-# TODO: Relativo a alteração de campos de um usuário
-
-A documentar.
+O  método  /update/  é  similar  ao  /store/,  porém  está  relacionado  à
+modificação  de  uma  entidade  já  existente em  algum  lugar,  ou  à
+modificação de alguma regra de negócio já em vigor.
 
 #+begin_src lisp
-(defgeneric control-update (type-key &optional params))
+(defgeneric control-update (type-key &optional params)
+  (:documentation "Specifies an operation for changing a specific
+entity or performing an update of an entity from a
+table or business rule."))
 #+end_src
 
 **** Delete
 
-# TODO: Relativo a remoção de um usuário
-
-A documentar.
+O método  /delete/ lembra vagamente o  /update/ no sentido de  que realiza
+uma  alteração  em uma  entidade  já  existente. Este  método,  porém,
+efetivamente *remove* tal entidade, ao invés de modificá-la.
 
 #+begin_src lisp
-(defgeneric control-delete (type-key &optional params))
+(defgeneric control-delete (type-key &optional params)
+  (:documentation "Specifies an operation for removing a specific
+entity from a table or from a business rule."))
+#+end_src
+
+*** Autenticação JWT
+:PROPERTIES:
+:header-args:lisp: :tangle src/jwt.lisp
+:END:
+
+#+begin_src lisp
+(in-package #:rest-server.db)
+#+end_src
+
+Antes de  iniciar qualquer trabalho  com as especificações  de métodos
+para   controladores,  precisamos   estabelecer   algumas  regras   de
+autenticação de usuário. Por exemplo, apenas um usuário do sistema ver
+as listas de todos  os usuários do mesmo, ou consultar  os dados de um
+usuário em específico.
+
+Podemos garantir isto através de uma autenticação com JSON Web Tokens,
+que consistem de dados digitalmente assinados com um tempo determinado
+de vida. Após este tempo ser esgotado, o token expira e o usuário terá
+que fazer login novamente.
+
+Mais informações sobre JSON Web Tokens podem ser obtidas em [[https://jwt.io][jwt.io]].
+
+**** Gerador de JSON Web Token
+
+Começaremos criando algumas ferramentas para  a geração de um JSON Web
+Token. Para  tanto, utilizaremos o  /system/ ~JOSE~, que nos  auxiliará na
+assinatura dos dados e consequente geração e validação do JWT.
+
+***** Parâmetros do Token
+
+O primeiro passo  é estabelecer algumas informações  relevantes para a
+aplicação. A maior parte destas informações deveria ser declarada fora
+do código  do programa, mas  deixaremos o mesmo aqui  por conveniência
+didática.
+
+Estabelecemos  o  método  de   hashing  utilizado  na  assinatura  dos
+dados. Utilizaremos o método HS256.
+
+#+begin_src lisp
+(defparameter *jwt-method* :hs256)
+#+end_src
+
+O próximo  passo é gerar  uma chave única  para a aplicação  que serve
+como /salt/ durante o processo de assinatura. Esta chave pode e deve ser
+armazenada  em algum  lugar  externo à  aplicação,  como variáveis  de
+ambiente.
+
+Usamos  o /system/  ~Ironclad~ para  converter o  /salt/ de  seu formato  de
+string de hexadecimais para vetor de /bytes/.
+
+#+begin_src lisp
+(defparameter *jwt-salt*
+  (ironclad:hex-string-to-byte-array
+   "04f79366645b309340cf5c8c308e780c6db9287d9bdc7664d96649"))
+#+end_src
+
+O /salt/ em si pode ser gerado de várias formas.
+
+Uma delas é diretamente através do ~Ironclad~: geramos um /salt/ aleatório
+de 27 /bytes/,  que será disposto em um vetor,  e em seguida codificamos
+estes /bytes/ para uma string hexadecimal. Veja um exemplo deste código,
+usando a notação de setas de ~cl-arrows~:
+
+#+begin_src lisp :tangle no
+(->> (ironclad:make-random-salt 27)
+     ironclad:byte-array-to-hex-string)
+#+end_src
+
+Finalmente, determinamos o tempo padrão de expiração de um token JWT.
+
+O tempo de expiração padrão  corresponde a sete dias corridos, podendo
+este valor ser alterado no futuro de acordo com a necessidade.
+
+#+begin_src lisp
+(defparameter *jwt-expires-in* '((:days . 7)))
+#+end_src
+
+***** Gerando o claim ~iat~
+
+O /claim/ ~iat~ é um campo reservado segundo a especificação no /payload/ do
+JWT (ou seja, nos "dados assinados"  do token). Este campo determina a
+data exata de quando o token em questão foi gerado.
+
+O campo é um número inteiro  não-negativo, que informa a data exata de
+criação do JWT,  em milissegundos, contando a partir da  data de 1º de
+janeiro de 1970, 00:00, GMT+0.
+
+Esta data não corresponde à contagem interna de Common Lisp, que conta
+em /segundos/  a partir  de 1º  de janeiro de  1900, 00:00,  GMT+0. Esta
+conversão para milissegundos e para uma contagem a partir de nova data
+é feita para  garantir conformidade com outras bibliotecas  de JWT, em
+particular ~jsonwebtoken~ de JavaScript.
+
+#+begin_src lisp
+(defun gen-jwt-creation-time ()
+  "Retrieve current time as time difference between now
+and January 1st, 1970, in miliseconds. The date is
+retrieved in seconds and then multiplied by 1000 for
+JavaScript conformance."
+  (-> (get-universal-time)
+      (- (encode-universal-time 0 0 0 1 1 1970 0))
+      (* 1000)))
+#+end_src
+
+#+RESULTS:
+: GEN-JWT-CREATION-TIME
+
+Adicionalmente,  podemos  definir  uma  função que  formata  uma  data
+qualquer que  tenha sido gerada  como números inteiros para  JWT. Isto
+será feito apenas com intuito de /debug/.
+
+#+begin_src lisp
+(defun dbg-format-jwt-time (time)
+  "Takes a time generated for any claim of a JWT and
+formats it into a string, for debug purposes."
+  (let ((time (-> (encode-universal-time 0 0 0 1 1 1970 0)
+                  (* 1000)
+                  (+ time))))
+    (multiple-value-bind
+          (sec min hour date month year day daylight-p zone)
+        (decode-universal-time (floor time 1000))
+      (declare (ignore day daylight-p))
+      (format nil "~2,'0d/~2,'0d/~4,'0d ~2,'0d:~2,'0d:~2,'0d+~d"
+              month date year hour min sec zone))))
+#+end_src
+
+#+RESULTS:
+: DBG-FORMAT-JWT-TIME
+
+***** Gerando o claim ~exp~
+
+Assim como ~iat~, ~exp~ é um  /claim/ reservado, que representa a data exata
+de *expiração* do token.
+
+O cálculo da data de expiração é  feito de forma relativa, a partir de
+uma data de criação (~iat~) informada  via parâmetro. Por exemplo, se os
+parâmetros para dedução de um  ~exp~ forem uma alist como esta...
+
+#+begin_src lisp :tangle no
+'((:years 1) (:months 2) (:days 7))
+#+end_src
+
+...a  função deduzirá  uma data  futura, que  corresponderá ao  espaço
+exato de  um ano, dois  meses e  sete dias após  a data de  criação do
+token informada.
+
+Estas datas são calculadas com base em valores comerciais, portanto um
+ano corresponde  a 365  dias, um  mês corresponde a  30 dias,  e assim
+sucessivamente.
+
+#+begin_src lisp
+(defun gen-jwt-expiration-time (creation-time params)
+  "Takes a creation time in miliseconds specially generated
+for JWT and returns its expiration date. The parameters must
+be an alist where each pair specifies a time period and the
+associated value must be a number."
+  (loop for pair in params
+     sum (* (cdr pair) ; lets hope sbcl constantfolds this
+            (case (car pair)
+              ((:years)   (* 365 24 60 60 1000))
+              ((:months)  (* 30 24 60 60 1000))
+              ((:days)    (* 24 60 60 1000))
+              ((:hours)   (* 60 60 1000))
+              ((:minutes) (* 60 1000))
+              ((:seconds) 1000)
+              (t 1)))
+     into extra-ms
+     finally (return (+ creation-time extra-ms))))
+#+end_src
+
+#+RESULTS:
+: GEN-JWT-EXPIRATION-TIME
+
+Em  geral,   o  tempo   de  expiração   será  ditado   pelo  parâmetro
+~*JWT-EXPIRES-IN*~, definido anteriormente.
+
+***** Função para resposta a requisição de sessão
+
+Esta função simples  termina a operação de criação de  um JWT, gerando
+uma alist  que servirá de resposta  para uma tentativa com  sucesso de
+autenticação no sistema. Será retornada  uma alist contendo o tempo de
+criação e de expiração do  token, mais alguns dados extras informados,
+e também um campo com o token em si.
+
+Todos os dados retornados na  alist (exceto o token) serão devidamente
+assinados e retransmitidos de forma  redundante no campo que carrega o
+JWT.
+
+#+begin_src lisp
+(defun gen-session-data (extra-data)
+  "Generates an alist containing a JWT with issue
+time and expiration time, plus some extra data that
+is also signed and inserted into the token itself."
+  (let* ((creation-time (gen-jwt-creation-time))
+         (expiry-time   (gen-jwt-expiration-time
+                         creation-time
+                         ,*jwt-expires-in*))
+         (extra-data (append extra-data
+                             `(("iat" . ,creation-time)
+                               ("exp" . ,expiry-time)))))
+    (append extra-data
+            `(("token" .
+                       ,(jose:encode *jwt-method*
+                                     ,*jwt-salt*
+                                     extra-data))))))
+#+end_src
+
+#+RESULTS:
+: GEN-SESSION-DATA
+
+**** Verificação de JSON Web Token
+
+# TODO:  Informar  que  o  token  deve  ser  fornecido  no  Header  da
+# requisição, em forma de Bearer.
+
+***** Verificação de token
+
+#+begin_src lisp
+(defun jwt-valid-p (token)
+  (let* ((token-data
+          (handler-case 
+              (jose:decode *jwt-method*
+                           ,*jwt-salt*
+                           token)
+            (jose/errors:jws-verification-error (e)
+              (declare (ignore e))
+              nil)))
+         (iat (cdr (assoc "iat" token-data :test #'equal)))
+         (exp (cdr (assoc "exp" token-data :test #'equal))))
+    (if (not token-data)
+        (values nil nil)
+        (values
+         (and (numberp iat)
+              (numberp exp)
+              (let ((diff (- exp iat))
+                    (currt (gen-jwt-creation-time)))
+                (not (minusp diff))
+                (not (zerop diff))
+                (< iat exp)
+                (< iat currt)
+                (> exp currt)))
+         token-data))))
+#+end_src
+
+#+RESULTS:
+: JWT-VALID-P
+
+***** Verificação de payload genérico
+
+#+begin_src lisp
+(defun request-authorized-p (bearer-token)
+  (let ((parts (split-sequence #\space bearer-token)))
+    (and (= 2 (length parts))
+         (string= (first parts) "Bearer")
+         (multiple-value-bind (result token-data)
+             (jwt-valid-p (second parts))
+           (or (and result (values t token-data))
+               (values nil nil))))))
+#+end_src
+
+***** Verificações de métodos de controladores
+
+****** Verificação do Index
+
+#+begin_src lisp
+(defmethod control-index :around (type &optional params)
+  (declare (ignore type params))
+  (if (->> ningle:*request*
+              lack.request:request-headers
+              (gethash "authorization")
+              request-authorized-p
+              not)
+      (util:http-response (401)
+        "Authentication token is invalid.")
+      (call-next-method)))
+#+end_src
+
+#+RESULTS:
+: #<STANDARD-METHOD REST-SERVER.DB:CONTROL-INDEX :AROUND (T) {1001CB9EE3}>
+
+****** Verificação do Show
+
+#+begin_src lisp
+(defmethod control-show :around (type &optional params)
+  (declare (ignore type params))
+  (if (->> ningle:*request*
+              lack.request:request-headers
+              (gethash "authorization")
+              request-authorized-p
+              not)
+      (util:http-response (401)
+        "Authentication token is invalid.")
+      (call-next-method)))
+#+end_src
+
+#+RESULTS:
+: #<STANDARD-METHOD REST-SERVER.DB:CONTROL-SHOW :AROUND (T) {100367EA83}>
+
+****** Verificação do Store
+
+#+begin_src lisp
+(defmethod control-store :around (type &optional params)
+  (declare (ignore params))
+  (cond ((eql type :session)
+         (call-next-method))
+        ((->> ningle:*request*
+              lack.request:request-headers
+              (gethash "authorization")
+              request-authorized-p
+              not)
+         (util:http-response (401)
+           "Authentication token is invalid."))
+        (t (call-next-method))))
+#+end_src
+
+#+RESULTS:
+: #<STANDARD-METHOD REST-SERVER.DB:CONTROL-STORE :AROUND (T) {10054843A3}>
+
+****** Verificação do Update
+
+#+begin_src lisp
+(defmethod control-update :around (type &optional params)
+  (declare (ignore type params))
+  (if (->> ningle:*request*
+              lack.request:request-headers
+              (gethash "authorization")
+              request-authorized-p
+              not)
+      (util:http-response (401)
+        "Authentication token is invalid.")
+      (call-next-method)))
+#+end_src
+
+****** Verificação do Delete
+
+#+begin_src lisp
+(defmethod control-delete :around (type &optional params)
+  (declare (ignore type params))
+  (if (->> ningle:*request*
+              lack.request:request-headers
+              (gethash "authorization")
+              request-authorized-p
+              not)
+      (util:http-response (401)
+        "Authentication token is invalid.")
+      (call-next-method)))
 #+end_src
 
 *** Controlador de Usuário
@@ -1230,275 +1592,6 @@ contrário, é  retornada uma  mensagem de sucesso  em JSON,  cujo campo
 
 #+RESULTS:
 : #<STANDARD-METHOD REST-SERVER.DB:CONTROL-STORE ((EQL :USER)) {1002B675C3}>
-
-*** Autenticação JWT
-:PROPERTIES:
-:header-args:lisp: :tangle src/jwt.lisp
-:END:
-
-#+begin_src lisp
-(in-package #:rest-server.db)
-#+end_src
-
-
-**** Gerador de JSON Web Token
-
-# TODO: Outsource para módulo próprio
-
-****** Parâmetros do Token
-
-#+begin_src lisp
-(defparameter *jwt-method* :hs256)
-#+end_src
-
-#+RESULTS:
-: *JWT-METHOD*
-
-# TODO: Este salt deve ser armazenado como variável de sessão, assim
-# como outras coisas.
-
-#+begin_src lisp
-(defparameter *jwt-salt*
-  (ironclad:ascii-string-to-byte-array
-   "04f79366645b309340cf5c8c308e780c6db9287d9bdc7664d96649"))
-#+end_src
-
-#+RESULTS:
-: *JWT-SALT*
-
-# TODO: Falar de como o salt foi gerado:
-
-#+begin_src lisp :tangle no
-(->> (ironclad:make-random-salt 27)
-     ironclad:byte-array-to-hex-string)
-#+end_src
-
-****** Gerando parâmetro ~iat~
-
-# 1º de janeiro de 1970, 00:00, GMT+00
-
-#+begin_src lisp
-(defun gen-jwt-creation-time ()
-  "Retrieve current time as time difference between now
-and January 1st, 1970, in miliseconds. The date is
-retrieved in seconds and then multiplied by 1000 for
-JavaScript conformance."
-  (-> (get-universal-time)
-      (- (encode-universal-time 0 0 0 1 1 1970 0))
-      (* 1000)))
-#+end_src
-
-#+RESULTS:
-: GEN-JWT-CREATION-TIME
-
-#+begin_src lisp
-(defun dbg-format-jwt-time (time)
-  (let ((time (-> (encode-universal-time 0 0 0 1 1 1970 0)
-                  (* 1000)
-                  (+ time))))
-    (multiple-value-bind
-          (sec min hour date month year day daylight-p zone)
-        (decode-universal-time (floor time 1000))
-      (declare (ignore day daylight-p))
-      (format nil "~2,'0d/~2,'0d/~4,'0d ~2,'0d:~2,'0d:~2,'0d+~d"
-              month date year hour min sec zone))))
-#+end_src
-
-#+RESULTS:
-: DBG-FORMAT-JWT-TIME
-
-****** Gerando parâmetro ~exp~
-
-#+begin_src lisp
-(defun gen-jwt-expiration-time (creation-time params)
-  "Takes a creation time in miliseconds specially generated
-for JWT and returns its expiration date. The parameters must
-be an alist where each pair specifies a time period and the
-associated value must be a number."
-  (loop for pair in params
-     sum (* (cdr pair) ; lets hope sbcl constantfolds this
-            (case (car pair)
-              ((:years)   (* 365 24 60 60 1000))
-              ((:months)  (* 30 24 60 60 1000))
-              ((:days)    (* 24 60 60 1000))
-              ((:hours)   (* 60 60 1000))
-              ((:minutes) (* 60 1000))
-              ((:seconds) 1000)
-              (t 1)))
-     into extra-ms
-     finally (return (+ creation-time extra-ms))))
-#+end_src
-
-#+RESULTS:
-: GEN-JWT-EXPIRATION-TIME
-
-****** Função geradora
-
-# TODO: Fazer outsource do tempo de expiração
-
-#+begin_src lisp
-(defparameter *jwt-expires-in* '((:days . 7)))
-#+end_src
-
-#+RESULTS:
-: *JWT-EXPIRES-IN*
-
-#+begin_src lisp
-(defun gen-session-data (extra-data)
-  (let* ((creation-time (gen-jwt-creation-time))
-         (expiry-time   (gen-jwt-expiration-time
-                         creation-time
-                         ,*jwt-expires-in*))
-         (extra-data (append extra-data
-                             `(("iat" . ,creation-time)
-                               ("exp" . ,expiry-time)))))
-    (append extra-data
-            `(("token" .
-                       ,(jose:encode *jwt-method*
-                                     ,*jwt-salt*
-                                     extra-data))))))
-#+end_src
-
-#+RESULTS:
-: GEN-SESSION-DATA
-
-**** Verificação de JSON Web Token
-
-# TODO:  Informar  que  o  token  deve  ser  fornecido  no  Header  da
-# requisição, em forma de Bearer.
-
-***** Verificação de token
-
-#+begin_src lisp
-(defun jwt-valid-p (token)
-  (let* ((token-data
-          (handler-case 
-              (jose:decode *jwt-method*
-                           ,*jwt-salt*
-                           token)
-            (jose/errors:jws-verification-error (e)
-              (declare (ignore e))
-              nil)))
-         (iat (cdr (assoc "iat" token-data :test #'equal)))
-         (exp (cdr (assoc "exp" token-data :test #'equal))))
-    (if (not token-data)
-        (values nil nil)
-        (values
-         (and (numberp iat)
-              (numberp exp)
-              (let ((diff (- exp iat)))
-                (not (minusp diff))
-                (not (zerop diff)))
-              (> exp (gen-jwt-creation-time)))
-         token-data))))
-#+end_src
-
-#+RESULTS:
-: JWT-VALID-P
-
-***** Verificação de payload genérico
-
-#+begin_src lispeyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwibWFpbCI6ImZ1bGFub0BleGVtcGxvLmNvbSIsImlhdCI6MTU4OTU5NzQxNDAwMCwiZXhwIjoxNTkwMjAyMjE0MDAwfQ.Zb91UhLCf0r1wK__ex24UHIKlHYSpLTQzk5Jl0Wb82M
-(defun request-authorized-p (bearer-token)
-  (let ((parts (split-sequence #\space bearer-token)))
-    (and (= 2 (length parts))
-         (string= (first parts) "Bearer")
-         (multiple-value-bind (result token-data)
-             (jwt-valid-p (second parts))
-           (or (and result (values t token-data))
-               (values nil nil))))))
-#+end_src
-
-#+RESULTS:
-: PAYLOAD-AUTHORIZED-P
-
-***** Verificações de métodos de controladores
-
-****** Verificação do Index
-
-#+begin_src lisp
-(defmethod control-index :around (type &optional params)
-  (declare (ignore type params))
-  (if (->> ningle:*request*
-              lack.request:request-headers
-              (gethash "authorization")
-              request-authorized-p
-              not)
-      (util:http-response (401)
-        "Authentication token is invalid.")
-      (call-next-method)))
-#+end_src
-
-#+RESULTS:
-: #<STANDARD-METHOD REST-SERVER.DB:CONTROL-INDEX :AROUND (T) {1001CB9EE3}>
-
-****** Verificação do Show
-
-#+begin_src lisp
-(defmethod control-show :around (type &optional params)
-  (declare (ignore type params))
-  (if (->> ningle:*request*
-              lack.request:request-headers
-              (gethash "authorization")
-              request-authorized-p
-              not)
-      (util:http-response (401)
-        "Authentication token is invalid.")
-      (call-next-method)))
-#+end_src
-
-#+RESULTS:
-: #<STANDARD-METHOD REST-SERVER.DB:CONTROL-SHOW :AROUND (T) {100367EA83}>
-
-****** Verificação do Store
-
-#+begin_src lisp
-(defmethod control-store :around (type &optional params)
-  (declare (ignore params))
-  (cond ((eql type :session)
-         (call-next-method))
-        ((->> ningle:*request*
-              lack.request:request-headers
-              (gethash "authorization")
-              request-authorized-p
-              not)
-         (util:http-response (401)
-           "Authentication token is invalid."))
-        (t (call-next-method))))
-#+end_src
-
-#+RESULTS:
-: #<STANDARD-METHOD REST-SERVER.DB:CONTROL-STORE :AROUND (T) {10054843A3}>
-
-****** Verificação do Update
-
-#+begin_src lisp
-(defmethod control-update :around (type &optional params)
-  (declare (ignore type params))
-  (if (->> ningle:*request*
-              lack.request:request-headers
-              (gethash "authorization")
-              request-authorized-p
-              not)
-      (util:http-response (401)
-        "Authentication token is invalid.")
-      (call-next-method)))
-#+end_src
-
-****** Verificação do Delete
-
-#+begin_src lisp
-(defmethod control-delete :around (type &optional params)
-  (declare (ignore type params))
-  (if (->> ningle:*request*
-              lack.request:request-headers
-              (gethash "authorization")
-              request-authorized-p
-              not)
-      (util:http-response (401)
-        "Authentication token is invalid.")
-      (call-next-method)))
-#+end_src
 
 *** Controlador de Sessão
 :PROPERTIES:
