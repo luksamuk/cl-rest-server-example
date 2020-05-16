@@ -179,19 +179,13 @@ nil ;; prevent output
   - [[#seeds][Seeds]]
   - [[#modelos][Modelos]]
     - [[#usuário][Usuário]]
-  - [[#controladores][Controladores]]
+  - [[#interface-de-controladores][Interface de controladores]]
     - [[#operações-genéricas][Operações genéricas]]
       - [[#index][Index]]
       - [[#show][Show]]
       - [[#store][Store]]
       - [[#update][Update]]
       - [[#delete][Delete]]
-    - [[#controlador-de-usuário][Controlador de Usuário]]
-      - [[#index-1][Index]]
-      - [[#show-1][Show]]
-      - [[#store-1][Store]]
-    - [[#controlador-de-sessão][Controlador de Sessão]]
-      - [[#store-2][Store]]
 - [[#autenticação-de-usuário][Autenticação de Usuário]]
   - [[#gerador-de-json-web-token][Gerador de JSON Web Token]]
     - [[#parâmetros-do-token][Parâmetros do Token]]
@@ -207,6 +201,13 @@ nil ;; prevent output
       - [[#verificação-do-store][Verificação do Store]]
       - [[#verificação-do-update][Verificação do Update]]
       - [[#verificação-do-delete][Verificação do Delete]]
+- [[#controladores][Controladores]]
+  - [[#controlador-de-usuário][Controlador de Usuário]]
+    - [[#index-1][Index]]
+    - [[#show-1][Show]]
+    - [[#store-1][Store]]
+  - [[#controlador-de-sessão][Controlador de Sessão]]
+    - [[#store-2][Store]]
 - [[#utilitários][Utilitários]]
   - [[#obtendo-elemento-de-uma-alist-ao-usar-macros][Obtendo elemento de uma alist ao usar macros]]
   - [[#preparando-uma-resposta-em-json-do-ningle][Preparando uma resposta em JSON do Ningle]]
@@ -1218,12 +1219,13 @@ tabela do usuário estão listados a seguir:
 É interessante  lembrar que  uma tabela  do ~mito~ nada  mais é  que uma
 classe, cujo campo ~:metaclass~ equivale a ~mito:dao-table-class~.
 
-** Controladores
+** Interface de controladores
 
 As próximas definições  tratam dos /controllers/ da  aplicação, ou seja,
-elementos que reforçam as regras  de negócio da aplicação. Começaremos
-definindo  operações  genéricas  que  serão  implementadas  para  cada
-controlador.
+elementos  que  reforçam  as  regras  de  negócio  da  aplicação.  Por
+enquanto, definiremos operações genéricas  que devem ser implementadas
+por   cada  controlador,   ou   seja,  uma   interface  inicial   para
+controladores.
 
 *** Operações genéricas
 :PROPERTIES:
@@ -1306,161 +1308,6 @@ efetivamente *remove* tal entidade, ao invés de modificá-la.
   (:documentation "Specifies an operation for removing a specific
 entity from a table or from a business rule."))
 #+end_src
-
-*** Controlador de Usuário
-:PROPERTIES:
-:header-args:lisp: :tangle src/controllers/user-controller.lisp
-:END:
-
-#+begin_src lisp
-(in-package #:rest-server.db)
-#+end_src
-
-Os  métodos  definidos  a  seguir  dizem  respeito  ao  /controller/  de
-Usuário.  Estes  métodos  são  diretamente  responsáveis  pelas  rotas
-relacionadas a gerenciamento de usuários.
-
-**** Index
-
-O  método /index/  é capaz  de  mostrar todos  os usuários  do banco  de
-dados. Estes usuários são retornados na  forma de um vetor de objetos,
-em notação JSON.
-
-# TODO: Exigir ou permitir paginação
-
-#+begin_src lisp
-(defmethod control-index ((type (eql :user)) &optional params)
-  (declare (ignore params))
-  (->> (mito:select-dao 'db:user)
-       (mapcar #'util:dao->filtered-alist)
-       json:encode-json-to-string))
-#+end_src
-
-#+RESULTS:
-: #<STANDARD-METHOD REST-SERVER.DB:CONTROL-INDEX ((EQL :USER) T T) {10070E5043}>
-
-**** Show
-
-O método /show/ é  capaz de mostrar os dados de  um único usuário. Estes
-dados são retornados  em forma de JSON. Caso o  usuário em questão não
-exista, a requisição falhará sob um erro HTTP 404, informando que o ID
-requisitado não existe.
-
-Como o  ID do  usuário é  informado através dos  parâmetros da  URL de
-acesso,  recebemos  estes  parâmetros   por  argumento,  ao  invés  da
-requisição em si.
-
-#+begin_src lisp
-(defmethod control-show ((type (eql :user)) &optional params)
-  (let ((user (mito:find-dao
-               'db:user
-               :id (util:agetf :id params))))
-    (if (null user)
-        (util:http-response (404)
-          "Unknown user ID ~a"
-          (util:agetf :id params))
-        (util:dao->json user))))
-#+end_src
-
-**** Store
-
-O método /store/ cadastra um novo usuário no banco de dados.
-
-O  corpo da  requisição espera  pelos campos  necessários para  que um
-usuário seja registrado no sistema.
-
-Estes campos são automaticamente deduzidos a partir da classe ~db:user~,
-que representa  a tabela ~user~, e  portanto podem mudar sem  prejuízo à
-verificação dos campos necessários.
-
-Este  método  pode retornar  códigos  HTTP  ~400~  caso os  dados  sejam
-insuficientes,  ou caso  o usuário  já exista  no banco  de dados.  Do
-contrário, é  retornada uma  mensagem de sucesso  em JSON,  cujo campo
-~"message"~ contém a string ~"OK"~.
-
-#+begin_src lisp
-(defmethod control-store ((type (eql :user)) &optional params)
-  (declare (ignore params))
-  (let ((payload (util:get-payload ningle:*request*)))
-    (if (not (util:post-valid-data-p 'db:user payload
-                                     :has-password t))
-        (util:http-response (400)
-          "Malformed user data")
-        (handler-case
-            (macrolet ((get-field (field)
-                         `(util:agetf ,field payload)))
-              (mito:create-dao
-               'user
-               :name (get-field :name)
-               :birthdate (get-field :birthdate)
-               :address (get-field :address)
-               :mail (get-field :mail)
-               :password (get-field :password))
-              (util:http-response ())) ; 200 OK
-          (dbi.error:dbi-database-error (e)
-            (declare (ignore e))
-            (util:http-response (400)
-              "User already exists"))))))
-#+end_src
-
-#+RESULTS:
-: #<STANDARD-METHOD REST-SERVER.DB:CONTROL-STORE ((EQL :USER)) {1002B675C3}>
-
-*** Controlador de Sessão
-:PROPERTIES:
-:header-args:lisp: :tangle src/controllers/session-controller.lisp
-:END:
-
-#+begin_src lisp
-(in-package #:rest-server.db)
-#+end_src
-
-Os  métodos  definidos  a  seguir  dizem  respeito  ao  /controller/  de
-Sessão.  Sessões não  existem  enquanto entidades  em  nosso banco  de
-dados,  sendo gerenciadas  principalmente por  tokens JWT  que expiram
-após algum tempo.
-
-**** Store
-
-O método /store/ cria uma nova sessão para um usuário informado no corpo
-da requisição.
-
-O  corpo  deverá  informar  os   elementos  ~mail~  e  ~password~  para  o
-usuário. Caso estes elementos não sejam informados, será retornada uma
-resposta  HTTP 400,  dizendo que  as  informações de  login não  estão
-completas.
-
-Caso o usuário  não possa ser encontrado por seu  ~mail~, será retornada
-uma  nova  resposta  HTTP  404,  informando  que  o  usuário  não  foi
-encontrado ou não existe.
-
-# TODO: Gerar token JWT e documentar o retorno
-
-#+begin_src lisp
-(defmethod control-store ((type (eql :session)) &optional params)
-  (declare (ignore params))
-  (let* ((payload (util:get-payload ningle:*request*))
-         (mail (util:agetf :mail payload))
-         (pass (util:agetf :password payload)))
-    (if (or (null mail) (null pass))
-        (util:http-response (400)
-          "Malformed login data")
-        (let* ((dao (mito:find-dao 'db:user :mail mail))
-               (alist (if dao (util:dao->alist dao) nil)))
-          (cond ((null dao)
-                 (util:http-response (404)
-                   "Unknown user"))
-                ((mito-auth:auth dao pass)
-                 (util:http-response ()
-                   (gen-session-data
-                     `(("id" . ,(util:agetf :id alist))
-                       ("mail" . ,mail)))))
-                (t (util:http-response (403)
-                     "Wrong password")))))))
-#+end_src
-
-#+RESULTS:
-: #<STANDARD-METHOD REST-SERVER.DB:CONTROL-STORE ((EQL :SESSION)) {1008DE9523}>
 
 * Autenticação de Usuário
 :PROPERTIES:
@@ -1809,6 +1656,170 @@ is also signed and inserted into the token itself."
         "Authentication token is invalid.")
       (call-next-method)))
 #+end_src
+
+* Controladores
+
+As próximas definições implementam controladores a partir da interface
+previamente  definida.  Cada  controlador será  identificado  por  uma
+palavra-chave  em  específico  (ex.   ~:user~  ou  ~:session~),  e  poderá
+implementar parcial ou totalmente a interface para um controlador.
+
+Cada controlador possui seu próprio arquivo de código-fonte.
+
+** Controlador de Usuário
+:PROPERTIES:
+:header-args:lisp: :tangle src/controllers/user-controller.lisp
+:END:
+
+#+begin_src lisp
+(in-package #:rest-server.db)
+#+end_src
+
+Os  métodos  definidos  a  seguir  dizem  respeito  ao  /controller/  de
+Usuário.  Estes  métodos  são  diretamente  responsáveis  pelas  rotas
+relacionadas a gerenciamento de usuários.
+
+*** Index
+
+O  método /index/  é capaz  de  mostrar todos  os usuários  do banco  de
+dados. Estes usuários são retornados na  forma de um vetor de objetos,
+em notação JSON.
+
+# TODO: Exigir ou permitir paginação
+
+#+begin_src lisp
+(defmethod control-index ((type (eql :user)) &optional params)
+  (declare (ignore params))
+  (->> (mito:select-dao 'db:user)
+       (mapcar #'util:dao->filtered-alist)
+       json:encode-json-to-string))
+#+end_src
+
+#+RESULTS:
+: #<STANDARD-METHOD REST-SERVER.DB:CONTROL-INDEX ((EQL :USER) T T) {10070E5043}>
+
+*** Show
+
+O método /show/ é  capaz de mostrar os dados de  um único usuário. Estes
+dados são retornados  em forma de JSON. Caso o  usuário em questão não
+exista, a requisição falhará sob um erro HTTP 404, informando que o ID
+requisitado não existe.
+
+Como o  ID do  usuário é  informado através dos  parâmetros da  URL de
+acesso,  recebemos  estes  parâmetros   por  argumento,  ao  invés  da
+requisição em si.
+
+#+begin_src lisp
+(defmethod control-show ((type (eql :user)) &optional params)
+  (let ((user (mito:find-dao
+               'db:user
+               :id (util:agetf :id params))))
+    (if (null user)
+        (util:http-response (404)
+          "Unknown user ID ~a"
+          (util:agetf :id params))
+        (util:dao->json user))))
+#+end_src
+
+*** Store
+
+O método /store/ cadastra um novo usuário no banco de dados.
+
+O  corpo da  requisição espera  pelos campos  necessários para  que um
+usuário seja registrado no sistema.
+
+Estes campos são automaticamente deduzidos a partir da classe ~db:user~,
+que representa  a tabela ~user~, e  portanto podem mudar sem  prejuízo à
+verificação dos campos necessários.
+
+Este  método  pode retornar  códigos  HTTP  ~400~  caso os  dados  sejam
+insuficientes,  ou caso  o usuário  já exista  no banco  de dados.  Do
+contrário, é  retornada uma  mensagem de sucesso  em JSON,  cujo campo
+~"message"~ contém a string ~"OK"~.
+
+#+begin_src lisp
+(defmethod control-store ((type (eql :user)) &optional params)
+  (declare (ignore params))
+  (let ((payload (util:get-payload ningle:*request*)))
+    (if (not (util:post-valid-data-p 'db:user payload
+                                     :has-password t))
+        (util:http-response (400)
+          "Malformed user data")
+        (handler-case
+            (macrolet ((get-field (field)
+                         `(util:agetf ,field payload)))
+              (mito:create-dao
+               'user
+               :name (get-field :name)
+               :birthdate (get-field :birthdate)
+               :address (get-field :address)
+               :mail (get-field :mail)
+               :password (get-field :password))
+              (util:http-response ())) ; 200 OK
+          (dbi.error:dbi-database-error (e)
+            (declare (ignore e))
+            (util:http-response (400)
+              "User already exists"))))))
+#+end_src
+
+#+RESULTS:
+: #<STANDARD-METHOD REST-SERVER.DB:CONTROL-STORE ((EQL :USER)) {1002B675C3}>
+
+** Controlador de Sessão
+:PROPERTIES:
+:header-args:lisp: :tangle src/controllers/session-controller.lisp
+:END:
+
+#+begin_src lisp
+(in-package #:rest-server.db)
+#+end_src
+
+Os  métodos  definidos  a  seguir  dizem  respeito  ao  /controller/  de
+Sessão.  Sessões não  existem  enquanto entidades  em  nosso banco  de
+dados,  sendo gerenciadas  principalmente por  tokens JWT  que expiram
+após algum tempo.
+
+*** Store
+
+O método /store/ cria uma nova sessão para um usuário informado no corpo
+da requisição.
+
+O  corpo  deverá  informar  os   elementos  ~mail~  e  ~password~  para  o
+usuário. Caso estes elementos não sejam informados, será retornada uma
+resposta  HTTP 400,  dizendo que  as  informações de  login não  estão
+completas.
+
+Caso o usuário  não possa ser encontrado por seu  ~mail~, será retornada
+uma  nova  resposta  HTTP  404,  informando  que  o  usuário  não  foi
+encontrado ou não existe.
+
+# TODO: Gerar token JWT e documentar o retorno
+
+#+begin_src lisp
+(defmethod control-store ((type (eql :session)) &optional params)
+  (declare (ignore params))
+  (let* ((payload (util:get-payload ningle:*request*))
+         (mail (util:agetf :mail payload))
+         (pass (util:agetf :password payload)))
+    (if (or (null mail) (null pass))
+        (util:http-response (400)
+          "Malformed login data")
+        (let* ((dao (mito:find-dao 'db:user :mail mail))
+               (alist (if dao (util:dao->alist dao) nil)))
+          (cond ((null dao)
+                 (util:http-response (404)
+                   "Unknown user"))
+                ((mito-auth:auth dao pass)
+                 (util:http-response ()
+                   (gen-session-data
+                     `(("id" . ,(util:agetf :id alist))
+                       ("mail" . ,mail)))))
+                (t (util:http-response (403)
+                     "Wrong password")))))))
+#+end_src
+
+#+RESULTS:
+: #<STANDARD-METHOD REST-SERVER.DB:CONTROL-STORE ((EQL :SESSION)) {1008DE9523}>
 
 * Utilitários
 :PROPERTIES:
