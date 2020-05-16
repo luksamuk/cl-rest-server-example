@@ -2,7 +2,7 @@
     :description "Exemplo de um servidor REST."
     :author "Lucas S. Vieira <lucasvieira@protonmail.com>"
     :license "MIT"
-    :version "0.0.5"
+    :version "0.1.0"
     :serial t
     :depends-on (#:cl-json
                  #:ningle
@@ -10,9 +10,11 @@
                  #:mito
                  #:mito-auth
                  #:ironclad
+                 #:jose
                  #:closer-mop
                  #:alexandria
-                 #:cl-arrows)
+                 #:cl-arrows
+                 #:split-sequence)
     :components
     ((:file "package")
      (:module "src"
@@ -20,6 +22,7 @@
                     (:file "server")
                     (:file "routes")
                     (:file "db")
+                    (:file "jwt")
                     (:module "models"
                       :components ((:file "user")))
                     (:module "controllers"

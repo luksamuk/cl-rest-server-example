@@ -15,8 +15,8 @@
                    "Unknown user"))
                 ((mito-auth:auth dao pass)
                  (util:http-response ()
-                   `((:id . ,(util:agetf :id alist))
-                     (:mail . ,mail)
-                     (:token . "")))) ; TODO: JWT token
+                   (gen-session-data
+                     `(("id" . ,(util:agetf :id alist))
+                       ("mail" . ,mail)))))
                 (t (util:http-response (403)
                      "Wrong password")))))))

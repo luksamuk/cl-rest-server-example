@@ -26,6 +26,10 @@
  (:class qlot/source/ql:source-ql
   :initargs (:%version "2020-03-25")
   :version "ql-2020-03-25"))
+("jose" .
+ (:class qlot/source/ql:source-ql
+  :initargs (:%version "2020-03-25")
+  :version "ql-2020-03-25"))
 ("closer-mop" .
  (:class qlot/source/ql:source-ql
   :initargs (:%version "2020-03-25")
@@ -35,6 +39,10 @@
   :initargs (:%version "2020-03-25")
   :version "ql-2020-03-25"))
 ("cl-arrows" .
+ (:class qlot/source/ql:source-ql
+  :initargs (:%version "2020-03-25")
+  :version "ql-2020-03-25"))
+("split-sequence" .
  (:class qlot/source/ql:source-ql
   :initargs (:%version "2020-03-25")
   :version "ql-2020-03-25"))
