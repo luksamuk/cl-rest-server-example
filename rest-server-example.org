@@ -6,7 +6,7 @@
 #+PROPERTY:  header-args:lisp :noweb strip-export :eval no :tangle no :results silent
 #+OPTIONS:   toc:nil title:nil
 
-* Sumário :TOC_3:
+* Sumário :TOC_6:
 - [[#introdução][Introdução]]
 - [[#dependências][Dependências]]
   - [[#sistemas][Sistemas]]
@@ -14,6 +14,7 @@
     - [[#dependências-opcionais][Dependências opcionais]]
     - [[#configurando-o-roswell][Configurando o Roswell]]
     - [[#configurando-o-qlot][Configurando o Qlot]]
+      - [[#dica-sobre-o-slime][Dica sobre o SLIME]]
     - [[#configurando-o-mito][Configurando o mito]]
   - [[#utilitários-extras][Utilitários extras]]
 - [[#definindo-o-projeto][Definindo o Projeto]]
@@ -40,15 +41,40 @@
     - [[#encerrando-a-conexão][Encerrando a conexão]]
   - [[#migrações][Migrações]]
     - [[#executando-as-migrações-em-código][Executando as migrações em código]]
+      - [[#verificando-o-sql-gerado-a-cada-consulta][Verificando o SQL gerado a cada consulta]]
     - [[#executando-as-migrações-pelo-console][Executando as migrações pelo console]]
+      - [[#scripts-para-migração][Scripts para migração]]
   - [[#seeds][Seeds]]
   - [[#modelos][Modelos]]
     - [[#usuário][Usuário]]
   - [[#controladores][Controladores]]
     - [[#operações-genéricas][Operações genéricas]]
+      - [[#index][Index]]
+      - [[#show][Show]]
+      - [[#store][Store]]
+      - [[#update][Update]]
+      - [[#delete][Delete]]
     - [[#autenticação-jwt][Autenticação JWT]]
+      - [[#gerador-de-json-web-token][Gerador de JSON Web Token]]
+        - [[#parâmetros-do-token][Parâmetros do Token]]
+        - [[#data-de-criação][Data de criação]]
+        - [[#data-de-expiração][Data de expiração]]
+        - [[#função-para-resposta-a-requisição-de-sessão][Função para resposta a requisição de sessão]]
+      - [[#verificação-de-json-web-token][Verificação de JSON Web Token]]
+        - [[#verificação-de-token][Verificação de token]]
+        - [[#verificação-de-payload-genérico][Verificação de payload genérico]]
+        - [[#verificações-de-métodos-de-controladores][Verificações de métodos de controladores]]
+          - [[#verificação-do-index][Verificação do Index]]
+          - [[#verificação-do-show][Verificação do Show]]
+          - [[#verificação-do-store][Verificação do Store]]
+          - [[#verificação-do-update][Verificação do Update]]
+          - [[#verificação-do-delete][Verificação do Delete]]
     - [[#controlador-de-usuário][Controlador de Usuário]]
+      - [[#index-1][Index]]
+      - [[#show-1][Show]]
+      - [[#store-1][Store]]
     - [[#controlador-de-sessão][Controlador de Sessão]]
+      - [[#store-2][Store]]
 - [[#utilitários][Utilitários]]
   - [[#obtendo-elemento-de-uma-alist-ao-usar-macros][Obtendo elemento de uma alist ao usar macros]]
   - [[#preparando-uma-resposta-em-json-do-ningle][Preparando uma resposta em JSON do Ningle]]
@@ -1223,7 +1249,7 @@ este valor ser alterado no futuro de acordo com a necessidade.
 (defparameter *jwt-expires-in* '((:days . 7)))
 #+end_src
 
-***** Gerando o claim ~iat~
+***** Data de criação
 
 O /claim/ ~iat~ é um campo reservado segundo a especificação no /payload/ do
 JWT (ou seja, nos "dados assinados"  do token). Este campo determina a
@@ -1275,7 +1301,7 @@ formats it into a string, for debug purposes."
 #+RESULTS:
 : DBG-FORMAT-JWT-TIME
 
-***** Gerando o claim ~exp~
+***** Data de expiração
 
 Assim como ~iat~, ~exp~ é um  /claim/ reservado, que representa a data exata
 de *expiração* do token.
